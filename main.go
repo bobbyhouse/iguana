@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -56,7 +57,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	evidence, err := createEvidenceBundle(os.Args[1])
+	filePath := os.Args[1]
+
+	if strings.HasSuffix(filePath, ".go") {
+		// v2: semantic analysis — writes companion .evidence.yaml file.
+		bundle, err := createEvidenceBundleV2(filePath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := writeEvidenceBundleV2(bundle); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("wrote %s.evidence.yaml\n", filePath)
+		return
+	}
+
+	// v1: integrity only — prints to stdout.
+	evidence, err := createEvidenceBundle(filePath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -64,14 +81,5 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	fmt.Print(string(out))
-
-	//state, err := categorizeFile(os.Args[1])
-	//if err != nil {
-	//	fmt.Fprintf(os.Stderr, "error: %v\n", err)
-	//	os.Exit(1)
-	//}
-
-	//fmt.Printf("%v", state)
 }
