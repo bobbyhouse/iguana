@@ -1,7 +1,7 @@
 version: 2
 file:
     path: internal/model/model.go
-    sha256: a50d86fcfdd9efaf9225c56fa0ed17cc3fee5f63f2b27c7ffadb003969897c37
+    sha256: fd73bfc26695da2871156e599bbe5550352a42f8207ba7a7890fe5631f5b1474
 package:
     name: model
     imports:
