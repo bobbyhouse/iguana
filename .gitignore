@@ -6,3 +6,4 @@ iguana
 .runtime/
 .claude/commands/
 .logs/
+.beads/redirect
