@@ -1,10 +1,12 @@
 .PHONY: build test generate
 
 build:
-	go build -o bin/igu .
+	GOEXPERIMENT= go build -o bin/iguana .
 
 test:
-	go test ./...
+	GOEXPERIMENT= go test ./...
 
 generate:
 	baml-cli generate
+	GOEXPERIMENT= gofmt -w .
+	GOEXPERIMENT= goimports -w .
