@@ -291,7 +291,7 @@ func TestBuildEffects_FromSignals(t *testing.T) {
 	}
 }
 
-// TestBuildEffects_Sorted verifies effects are sorted by kind then from_file (INV-28).
+// TestBuildEffects_Sorted verifies effects are sorted by kind then via (INV-28).
 func TestBuildEffects_Sorted(t *testing.T) {
 	bundles := []*EvidenceBundleV2{
 		makeTestBundle("z.go", "a", "pkg", Signals{FSReads: true, NetCalls: true}),
@@ -305,8 +305,8 @@ func TestBuildEffects_Sorted(t *testing.T) {
 		if curr.Kind < prev.Kind {
 			t.Errorf("effects not sorted by kind at %d: %q < %q", i, curr.Kind, prev.Kind)
 		}
-		if curr.Kind == prev.Kind && curr.FromFile < prev.FromFile {
-			t.Errorf("effects not sorted by from_file at %d: %q < %q", i, curr.FromFile, prev.FromFile)
+		if curr.Kind == prev.Kind && curr.Via < prev.Via {
+			t.Errorf("effects not sorted by via at %d: %q < %q", i, curr.Via, prev.Via)
 		}
 	}
 }

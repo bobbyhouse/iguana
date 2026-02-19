@@ -84,21 +84,16 @@ type Entrypoint struct {
 
 // StateDomain is a logical cluster of related state (inferred by LLM).
 type StateDomain struct {
-	ID             string           `yaml:"id"`
-	Description    string           `yaml:"description"`
-	Owners         []string         `yaml:"owners,omitempty"`
-	Representations []Representation `yaml:"representations,omitempty"`
-	Persistence    *Persistence     `yaml:"persistence,omitempty"`
-	EvidenceRefs   []string         `yaml:"evidence_refs,omitempty"`
-	Confidence     float64          `yaml:"confidence"`
-}
-
-// Representation is a type symbol within a state domain.
-type Representation struct {
-	Symbol       string   `yaml:"symbol"`
-	Mutators     []string `yaml:"mutators,omitempty"`
-	Readers      []string `yaml:"readers,omitempty"`
-	EvidenceRefs []string `yaml:"evidence_refs,omitempty"`
+	ID              string       `yaml:"id"`
+	Description     string       `yaml:"description"`
+	Owners          []string     `yaml:"owners,omitempty"`
+	Aggregate       string       `yaml:"aggregate"`                   // primary concept name
+	Representations []string     `yaml:"representations,omitempty"`   // 1-3 related type names
+	PrimaryMutators []string     `yaml:"primary_mutators,omitempty"`  // deduped write functions
+	PrimaryReaders  []string     `yaml:"primary_readers,omitempty"`   // deduped read functions
+	Persistence     *Persistence `yaml:"persistence,omitempty"`
+	EvidenceRefs    []string     `yaml:"evidence_refs,omitempty"`
+	Confidence      float64      `yaml:"confidence"`
 }
 
 // Persistence describes how a state domain is persisted (derived from signals).
@@ -149,8 +144,9 @@ type SymbolRef struct {
 
 // Effect represents a side-effect kind observed at a symbol site.
 type Effect struct {
-	Kind         string   `yaml:"kind"`         // "db_write" | "fs_read" | "fs_write" | "net_call"
-	FromFile     string   `yaml:"from_file"`
+	Kind         string   `yaml:"kind"`             // "db_write" | "fs_read" | "fs_write" | "net_call"
+	Domain       string   `yaml:"domain,omitempty"` // state domain this effect belongs to (linked post-LLM)
+	Via          string   `yaml:"via"`              // file path where the effect originates
 	EvidenceRefs []string `yaml:"evidence_refs,omitempty"`
 }
 
@@ -412,8 +408,8 @@ func buildEffects(bundles []*EvidenceBundleV2) []Effect {
 	for _, bnd := range bundles {
 		if bnd.Signals.DBCalls {
 			effects = append(effects, Effect{
-				Kind:     "db_write",
-				FromFile: bnd.File.Path,
+				Kind: "db_write",
+				Via:  bnd.File.Path,
 				EvidenceRefs: []string{
 					evidenceRef(bnd.File.Path, bnd.Version, "signal:db_calls"),
 				},
@@ -421,8 +417,8 @@ func buildEffects(bundles []*EvidenceBundleV2) []Effect {
 		}
 		if bnd.Signals.FSReads {
 			effects = append(effects, Effect{
-				Kind:     "fs_read",
-				FromFile: bnd.File.Path,
+				Kind: "fs_read",
+				Via:  bnd.File.Path,
 				EvidenceRefs: []string{
 					evidenceRef(bnd.File.Path, bnd.Version, "signal:fs_reads"),
 				},
@@ -430,8 +426,8 @@ func buildEffects(bundles []*EvidenceBundleV2) []Effect {
 		}
 		if bnd.Signals.FSWrites {
 			effects = append(effects, Effect{
-				Kind:     "fs_write",
-				FromFile: bnd.File.Path,
+				Kind: "fs_write",
+				Via:  bnd.File.Path,
 				EvidenceRefs: []string{
 					evidenceRef(bnd.File.Path, bnd.Version, "signal:fs_writes"),
 				},
@@ -439,8 +435,8 @@ func buildEffects(bundles []*EvidenceBundleV2) []Effect {
 		}
 		if bnd.Signals.NetCalls {
 			effects = append(effects, Effect{
-				Kind:     "net_call",
-				FromFile: bnd.File.Path,
+				Kind: "net_call",
+				Via:  bnd.File.Path,
 				EvidenceRefs: []string{
 					evidenceRef(bnd.File.Path, bnd.Version, "signal:net_calls"),
 				},
@@ -448,12 +444,12 @@ func buildEffects(bundles []*EvidenceBundleV2) []Effect {
 		}
 	}
 
-	// Sort by kind then from_file (INV-28).
+	// Sort by kind then via (INV-28).
 	sort.Slice(effects, func(i, j int) bool {
 		if effects[i].Kind != effects[j].Kind {
 			return effects[i].Kind < effects[j].Kind
 		}
-		return effects[i].FromFile < effects[j].FromFile
+		return effects[i].Via < effects[j].Via
 	})
 	return effects
 }
@@ -624,23 +620,14 @@ func mapStateDomains(specs []types.StateDomainSpec, bundles []*EvidenceBundleV2)
 	var domains []StateDomain
 	for _, spec := range specs {
 		refs := pkgBundleRefs(bundles, spec.Owners)
-
-		// Build Representation list from type_symbols, mutators, readers.
-		var reps []Representation
-		for _, sym := range spec.Type_symbols {
-			reps = append(reps, Representation{
-				Symbol:       sym,
-				Mutators:     sortedCopy(spec.Mutators),
-				Readers:      sortedCopy(spec.Readers),
-				EvidenceRefs: refs,
-			})
-		}
-
 		domains = append(domains, StateDomain{
 			ID:              spec.Id,
 			Description:     spec.Description,
 			Owners:          sortedCopy(spec.Owners),
-			Representations: reps,
+			Aggregate:       spec.Aggregate,
+			Representations: sortedCopy(spec.Representations),
+			PrimaryMutators: sortedCopy(spec.Primary_mutators),
+			PrimaryReaders:  sortedCopy(spec.Primary_readers),
 			EvidenceRefs:    refs,
 			Confidence:      spec.Confidence,
 		})
@@ -650,6 +637,30 @@ func mapStateDomains(specs []types.StateDomainSpec, bundles []*EvidenceBundleV2)
 		return domains[i].ID < domains[j].ID
 	})
 	return domains
+}
+
+// linkEffectsToDomains annotates each effect's Domain field by resolving
+// file → package → domain owner. Effects with no matching domain are left
+// with an empty Domain field.
+func linkEffectsToDomains(effects []Effect, domains []StateDomain, bundles []*EvidenceBundleV2) {
+	// Build file path → package name.
+	fileToPkg := make(map[string]string, len(bundles))
+	for _, b := range bundles {
+		fileToPkg[b.File.Path] = b.Package.Name
+	}
+	// Build package name → domain ID (first owner wins).
+	pkgToDomain := make(map[string]string)
+	for _, d := range domains {
+		for _, pkg := range d.Owners {
+			if _, exists := pkgToDomain[pkg]; !exists {
+				pkgToDomain[pkg] = d.ID
+			}
+		}
+	}
+	for i := range effects {
+		pkg := fileToPkg[effects[i].Via]
+		effects[i].Domain = pkgToDomain[pkg]
+	}
 }
 
 // mapTrustZones converts LLM TrustZoneSpec slices to Go TrustZone slices.
@@ -740,6 +751,8 @@ func GenerateSystemModel(ctx context.Context, root string) (*SystemModel, error)
 		stateDomains = mapStateDomains(inference.State_domains, bundles)
 		trustZones = mapTrustZones(inference.Trust_zones, bundles)
 		openQuestions = mapOpenQuestions(inference.Open_questions)
+		// Annotate effects with their owning domain (requires LLM output).
+		linkEffectsToDomains(effects, stateDomains, bundles)
 	}
 
 	return &SystemModel{
