@@ -37,12 +37,18 @@ import (
 // Data types
 // ---------------------------------------------------------------------------
 
+// FileMeta holds the path and integrity hash of the analyzed source file.
+type FileMeta struct {
+	Path   string `yaml:"path"`
+	SHA256 string `yaml:"sha256"`
+}
+
 // EvidenceBundleV2 is the top-level container for a v2 evidence bundle.
 // Field order matches the desired YAML output order; yaml.v3 respects struct
 // field order, so no additional sorting is needed at the top level.
 type EvidenceBundleV2 struct {
 	Version int         `yaml:"version"`
-	File    FileMeta    `yaml:"file"`    // reuses FileMeta from main.go
+	File    FileMeta    `yaml:"file"`
 	Package PackageMeta `yaml:"package"`
 	Symbols Symbols     `yaml:"symbols"`
 	Calls   []Call      `yaml:"calls,omitempty"`
