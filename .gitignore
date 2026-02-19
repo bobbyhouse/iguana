@@ -1,6 +1,6 @@
 bin
 baml_client
-iguana
+/iguana
 
 # Gas Town (added by gt)
 .beads/
