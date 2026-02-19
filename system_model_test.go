@@ -25,9 +25,9 @@ import (
 // Helpers
 // ---------------------------------------------------------------------------
 
-// makeTestBundle constructs a minimal EvidenceBundleV2 for testing.
-func makeTestBundle(path, sha256, pkgName string, signals Signals) *EvidenceBundleV2 {
-	return &EvidenceBundleV2{
+// makeTestBundle constructs a minimal EvidenceBundle for testing.
+func makeTestBundle(path, sha256, pkgName string, signals Signals) *EvidenceBundle {
+	return &EvidenceBundle{
 		Version: 2,
 		File: FileMeta{
 			Path:   path,
@@ -40,7 +40,7 @@ func makeTestBundle(path, sha256, pkgName string, signals Signals) *EvidenceBund
 
 // writeTestBundle writes a minimal evidence YAML to dir/<name>.evidence.yaml.
 // Returns the path to the written file.
-func writeTestBundle(t *testing.T, dir, name string, bundle *EvidenceBundleV2) string {
+func writeTestBundle(t *testing.T, dir, name string, bundle *EvidenceBundle) string {
 	t.Helper()
 	data, err := yaml.Marshal(bundle)
 	if err != nil {
@@ -156,8 +156,8 @@ func TestComputeBundleSetHash_Deterministic(t *testing.T) {
 	b1 := makeTestBundle("a.go", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1", "main", Signals{})
 	b2 := makeTestBundle("b.go", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2", "main", Signals{})
 
-	hash1 := computeBundleSetHash([]*EvidenceBundleV2{b1, b2})
-	hash2 := computeBundleSetHash([]*EvidenceBundleV2{b2, b1})
+	hash1 := computeBundleSetHash([]*EvidenceBundle{b1, b2})
+	hash2 := computeBundleSetHash([]*EvidenceBundle{b2, b1})
 
 	if hash1 != hash2 {
 		t.Errorf("hash depends on order: %q vs %q", hash1, hash2)
@@ -177,7 +177,7 @@ func TestBuildInventory_GroupsByPackage(t *testing.T) {
 	b1 := makeTestBundle("pkg/foo.go", "a", "auth", Signals{})
 	b2 := makeTestBundle("pkg/bar.go", "b", "auth", Signals{})
 
-	inv := buildInventory([]*EvidenceBundleV2{b1, b2})
+	inv := buildInventory([]*EvidenceBundle{b1, b2})
 
 	if len(inv.Packages) != 1 {
 		t.Fatalf("expected 1 package, got %d", len(inv.Packages))
@@ -198,7 +198,7 @@ func TestBuildInventory_GroupsByPackage(t *testing.T) {
 // TestBuildInventory_Entrypoints verifies that a package=main bundle with a
 // main function symbol is identified as an entrypoint.
 func TestBuildInventory_Entrypoints(t *testing.T) {
-	b1 := &EvidenceBundleV2{
+	b1 := &EvidenceBundle{
 		Version: 2,
 		File:    FileMeta{Path: "main.go", SHA256: "a"},
 		Package: PackageMeta{Name: "main"},
@@ -207,7 +207,7 @@ func TestBuildInventory_Entrypoints(t *testing.T) {
 		},
 	}
 
-	inv := buildInventory([]*EvidenceBundleV2{b1})
+	inv := buildInventory([]*EvidenceBundle{b1})
 
 	if len(inv.Entrypoints) != 1 {
 		t.Fatalf("expected 1 entrypoint, got %d", len(inv.Entrypoints))
@@ -230,7 +230,7 @@ func TestBuildInventory_Entrypoints(t *testing.T) {
 func TestBuildBoundaries_DBCalls(t *testing.T) {
 	bnd := makeTestBundle("store/db.go", "x", "store", Signals{DBCalls: true})
 
-	boundaries := buildBoundaries([]*EvidenceBundleV2{bnd})
+	boundaries := buildBoundaries([]*EvidenceBundle{bnd})
 
 	if len(boundaries.Persistence) == 0 {
 		t.Fatal("expected at least one persistence boundary")
@@ -254,7 +254,7 @@ func TestBuildBoundaries_DBCalls(t *testing.T) {
 func TestBuildBoundaries_NetCalls(t *testing.T) {
 	bnd := makeTestBundle("client/http.go", "x", "client", Signals{NetCalls: true})
 
-	boundaries := buildBoundaries([]*EvidenceBundleV2{bnd})
+	boundaries := buildBoundaries([]*EvidenceBundle{bnd})
 
 	if boundaries.Network == nil {
 		t.Fatal("expected network boundary, got nil")
@@ -271,7 +271,7 @@ func TestBuildBoundaries_NetCalls(t *testing.T) {
 // TestBuildEffects_FromSignals verifies that each signal kind produces the
 // correct effect kind.
 func TestBuildEffects_FromSignals(t *testing.T) {
-	bundles := []*EvidenceBundleV2{
+	bundles := []*EvidenceBundle{
 		makeTestBundle("db.go", "a", "store", Signals{DBCalls: true}),
 		makeTestBundle("fs.go", "b", "io", Signals{FSReads: true, FSWrites: true}),
 		makeTestBundle("net.go", "c", "http", Signals{NetCalls: true}),
@@ -293,7 +293,7 @@ func TestBuildEffects_FromSignals(t *testing.T) {
 
 // TestBuildEffects_Sorted verifies effects are sorted by kind then via (INV-28).
 func TestBuildEffects_Sorted(t *testing.T) {
-	bundles := []*EvidenceBundleV2{
+	bundles := []*EvidenceBundle{
 		makeTestBundle("z.go", "a", "pkg", Signals{FSReads: true, NetCalls: true}),
 		makeTestBundle("a.go", "b", "pkg", Signals{FSReads: true, DBCalls: true}),
 	}

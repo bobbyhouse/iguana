@@ -1,20 +1,20 @@
-# Evidence Bundle v2 — Invariants
+# Evidence Bundle — Invariants
 
-These invariants must hold before and after every change to the v2 implementation.
+These invariants must hold before and after every change to the implementation.
 
 ## Integrity Invariants
 
 1. **SHA256 correctness**: The `file.sha256` field must always equal
    `hex(sha256(os.ReadFile(file.path)))` at the moment of bundle creation.
 
-2. **Staleness detection**: `validateEvidenceBundleV2` must return an error
+2. **Staleness detection**: `validateEvidenceBundle` must return an error
    whenever the current file hash differs from `bundle.File.SHA256`.
 
-3. **Version constant**: `EvidenceBundleV2.Version` is always `2`.
+3. **Version constant**: `EvidenceBundle.Version` is always `2`.
 
 ## Determinism Invariants
 
-4. **Idempotency**: Running `createEvidenceBundleV2(filePath)` twice on the
+4. **Idempotency**: Running `createEvidenceBundle(filePath)` twice on the
    same unmodified file must produce byte-for-byte identical YAML output.
 
 5. **No position data**: The YAML output must never contain line numbers,
@@ -65,12 +65,12 @@ These invariants must hold before and after every change to the v2 implementatio
 
 ## Implementation Separation Invariants
 
-20. **Generation is pure**: `createEvidenceBundleV2` does not write any files.
+20. **Generation is pure**: `createEvidenceBundle` does not write any files.
 
-21. **Serialization is isolated**: `writeEvidenceBundleV2` only marshals and
+21. **Serialization is isolated**: `writeEvidenceBundle` only marshals and
     writes — it does not re-analyze the source file.
 
-22. **Validation is read-only**: `validateEvidenceBundleV2` only reads the
+22. **Validation is read-only**: `validateEvidenceBundle` only reads the
     source file to recompute the hash — it does not modify anything.
 
 ## Directory Walk Invariants

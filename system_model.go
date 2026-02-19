@@ -216,8 +216,8 @@ func evidenceRef(path string, version int, fragment string) string {
 
 // loadEvidenceBundles walks root for *.evidence.yaml files, unmarshals each,
 // and returns them sorted by File.Path (INV-31 requires deterministic hash).
-func loadEvidenceBundles(root string) ([]*EvidenceBundleV2, error) {
-	var bundles []*EvidenceBundleV2
+func loadEvidenceBundles(root string) ([]*EvidenceBundle, error) {
+	var bundles []*EvidenceBundle
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -237,7 +237,7 @@ func loadEvidenceBundles(root string) ([]*EvidenceBundleV2, error) {
 		if err != nil {
 			return fmt.Errorf("read %s: %w", path, err)
 		}
-		var bundle EvidenceBundleV2
+		var bundle EvidenceBundle
 		if err := yaml.Unmarshal(data, &bundle); err != nil {
 			return fmt.Errorf("unmarshal %s: %w", path, err)
 		}
@@ -261,7 +261,7 @@ func loadEvidenceBundles(root string) ([]*EvidenceBundleV2, error) {
 
 // computeBundleSetHash computes a deterministic SHA256 over the set of bundles
 // by hashing the sorted "path@sha256" lines (INV-31).
-func computeBundleSetHash(bundles []*EvidenceBundleV2) string {
+func computeBundleSetHash(bundles []*EvidenceBundle) string {
 	lines := make([]string, len(bundles))
 	for i, b := range bundles {
 		lines[i] = b.File.Path + "@" + b.File.SHA256
@@ -276,7 +276,7 @@ func computeBundleSetHash(bundles []*EvidenceBundleV2) string {
 // hasSymbol checks if a bundle contains a symbol with the given name.
 // ---------------------------------------------------------------------------
 
-func hasSymbol(bundle *EvidenceBundleV2, name string) bool {
+func hasSymbol(bundle *EvidenceBundle, name string) bool {
 	for _, fn := range bundle.Symbols.Functions {
 		if fn.Name == name {
 			return true
@@ -291,7 +291,7 @@ func hasSymbol(bundle *EvidenceBundleV2, name string) bool {
 
 // buildInventory groups bundles by package name, assembles PackageEntry slices,
 // and identifies entrypoints (package main + main function).
-func buildInventory(bundles []*EvidenceBundleV2) Inventory {
+func buildInventory(bundles []*EvidenceBundle) Inventory {
 	// Group bundles by package name.
 	pkgFiles := make(map[string][]string)
 	pkgRefs := make(map[string][]string)
@@ -347,7 +347,7 @@ func buildInventory(bundles []*EvidenceBundleV2) Inventory {
 }
 
 // buildBoundaries derives persistence and network boundaries from signals.
-func buildBoundaries(bundles []*EvidenceBundleV2) Boundaries {
+func buildBoundaries(bundles []*EvidenceBundle) Boundaries {
 	var dbWriters []SymbolRef
 	var fsWriters []SymbolRef
 	var outbound []SymbolRef
@@ -402,7 +402,7 @@ func buildBoundaries(bundles []*EvidenceBundleV2) Boundaries {
 
 // buildEffects produces one Effect per signal kind per file.
 // Effects are sorted by kind then from_file (INV-28).
-func buildEffects(bundles []*EvidenceBundleV2) []Effect {
+func buildEffects(bundles []*EvidenceBundle) []Effect {
 	var effects []Effect
 
 	for _, bnd := range bundles {
@@ -455,7 +455,7 @@ func buildEffects(bundles []*EvidenceBundleV2) []Effect {
 }
 
 // buildConcurrencyDomains collects one domain per file with concurrency signals.
-func buildConcurrencyDomains(bundles []*EvidenceBundleV2) []ConcurrencyDomain {
+func buildConcurrencyDomains(bundles []*EvidenceBundle) []ConcurrencyDomain {
 	var domains []ConcurrencyDomain
 
 	for _, bnd := range bundles {
@@ -486,7 +486,7 @@ func buildConcurrencyDomains(bundles []*EvidenceBundleV2) []ConcurrencyDomain {
 // buildPackageSummaries groups bundles by package, ORs signals, collects
 // types/funcs/imports (capped at 10), and filters to packages with ≥1 signal.
 // At most 60 packages are sent to the LLM.
-func buildPackageSummaries(bundles []*EvidenceBundleV2) []types.PackageSummary {
+func buildPackageSummaries(bundles []*EvidenceBundle) []types.PackageSummary {
 	type pkgAccum struct {
 		files     []string
 		types     map[string]bool
@@ -600,7 +600,7 @@ func buildPackageSummaries(bundles []*EvidenceBundleV2) []types.PackageSummary {
 
 // pkgBundleRefs returns evidence refs for all bundles belonging to the given
 // package names.
-func pkgBundleRefs(bundles []*EvidenceBundleV2, pkgNames []string) []string {
+func pkgBundleRefs(bundles []*EvidenceBundle, pkgNames []string) []string {
 	pkgSet := make(map[string]bool, len(pkgNames))
 	for _, p := range pkgNames {
 		pkgSet[p] = true
@@ -616,7 +616,7 @@ func pkgBundleRefs(bundles []*EvidenceBundleV2, pkgNames []string) []string {
 }
 
 // mapStateDomains converts LLM StateDomainSpec slices to Go StateDomain slices.
-func mapStateDomains(specs []types.StateDomainSpec, bundles []*EvidenceBundleV2) []StateDomain {
+func mapStateDomains(specs []types.StateDomainSpec, bundles []*EvidenceBundle) []StateDomain {
 	var domains []StateDomain
 	for _, spec := range specs {
 		refs := pkgBundleRefs(bundles, spec.Owners)
@@ -642,7 +642,7 @@ func mapStateDomains(specs []types.StateDomainSpec, bundles []*EvidenceBundleV2)
 // linkEffectsToDomains annotates each effect's Domain field by resolving
 // file → package → domain owner. Effects with no matching domain are left
 // with an empty Domain field.
-func linkEffectsToDomains(effects []Effect, domains []StateDomain, bundles []*EvidenceBundleV2) {
+func linkEffectsToDomains(effects []Effect, domains []StateDomain, bundles []*EvidenceBundle) {
 	// Build file path → package name.
 	fileToPkg := make(map[string]string, len(bundles))
 	for _, b := range bundles {
@@ -664,7 +664,7 @@ func linkEffectsToDomains(effects []Effect, domains []StateDomain, bundles []*Ev
 }
 
 // mapTrustZones converts LLM TrustZoneSpec slices to Go TrustZone slices.
-func mapTrustZones(specs []types.TrustZoneSpec, bundles []*EvidenceBundleV2) []TrustZone {
+func mapTrustZones(specs []types.TrustZoneSpec, bundles []*EvidenceBundle) []TrustZone {
 	var zones []TrustZone
 	for _, spec := range specs {
 		refs := pkgBundleRefs(bundles, spec.Packages)

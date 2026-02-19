@@ -1,10 +1,10 @@
 package main
 
-// evidence_v2_test.go — Tests for the v2 semantic evidence bundle.
+// evidence_test.go — Tests for the semantic evidence bundle.
 //
 // Test strategy per CLAUDE.md:
 //   - Unit tests:       test individual extraction helpers with controlled AST inputs
-//   - Integration tests: run createEvidenceBundleV2 on real .go files in this package
+//   - Integration tests: run createEvidenceBundle on real .go files in this package
 //   - Property tests:   assert determinism, sorting, and no-position-data invariants
 //   - Fuzz tests:       ensure parsing + extraction never panics on arbitrary input
 //
@@ -629,14 +629,14 @@ func inner() {
 // Property tests — INV-4, INV-5, INV-7..12
 // --------------------------------------------------------------------------
 
-// TestDeterminism verifies that createEvidenceBundleV2 produces identical YAML
+// TestDeterminism verifies that createEvidenceBundle produces identical YAML
 // output on two consecutive calls on the same file (INV-4 idempotency).
 func TestDeterminism(t *testing.T) {
-	b1, err := createEvidenceBundleV2("main.go")
+	b1, err := createEvidenceBundle("main.go")
 	if err != nil {
 		t.Fatalf("first call: %v", err)
 	}
-	b2, err := createEvidenceBundleV2("main.go")
+	b2, err := createEvidenceBundle("main.go")
 	if err != nil {
 		t.Fatalf("second call: %v", err)
 	}
@@ -658,9 +658,9 @@ func TestDeterminism(t *testing.T) {
 // TestNoPositionData verifies the YAML output does not contain position fields
 // like line numbers or column numbers (INV-5).
 func TestNoPositionData(t *testing.T) {
-	b, err := createEvidenceBundleV2("main.go")
+	b, err := createEvidenceBundle("main.go")
 	if err != nil {
-		t.Fatalf("createEvidenceBundleV2: %v", err)
+		t.Fatalf("createEvidenceBundle: %v", err)
 	}
 	y, err := yaml.Marshal(b)
 	if err != nil {
@@ -678,9 +678,9 @@ func TestNoPositionData(t *testing.T) {
 
 // TestSortedInvariants verifies all slices in the output are sorted (INV-7..12).
 func TestSortedInvariants(t *testing.T) {
-	b, err := createEvidenceBundleV2("main.go")
+	b, err := createEvidenceBundle("main.go")
 	if err != nil {
-		t.Fatalf("createEvidenceBundleV2: %v", err)
+		t.Fatalf("createEvidenceBundle: %v", err)
 	}
 
 	// INV-7: imports sorted by path
@@ -731,12 +731,12 @@ func TestSortedInvariants(t *testing.T) {
 // Integration tests
 // --------------------------------------------------------------------------
 
-// TestCreateEvidenceBundleV2_OnMainGo runs a full v2 analysis on the existing
+// TestCreateEvidenceBundle_OnMainGo runs a full analysis on the existing
 // main.go in this package and checks structural correctness.
-func TestCreateEvidenceBundleV2_OnMainGo(t *testing.T) {
-	b, err := createEvidenceBundleV2("main.go")
+func TestCreateEvidenceBundle_OnMainGo(t *testing.T) {
+	b, err := createEvidenceBundle("main.go")
 	if err != nil {
-		t.Fatalf("createEvidenceBundleV2: %v", err)
+		t.Fatalf("createEvidenceBundle: %v", err)
 	}
 
 	// Version must be 2 (INV-3)
@@ -773,9 +773,9 @@ func TestCreateEvidenceBundleV2_OnMainGo(t *testing.T) {
 // TestSHA256MatchesFile verifies the SHA256 in the bundle matches the actual
 // file bytes (INV-1).
 func TestSHA256MatchesFile(t *testing.T) {
-	b, err := createEvidenceBundleV2("main.go")
+	b, err := createEvidenceBundle("main.go")
 	if err != nil {
-		t.Fatalf("createEvidenceBundleV2: %v", err)
+		t.Fatalf("createEvidenceBundle: %v", err)
 	}
 
 	raw, err := os.ReadFile("main.go")
@@ -792,18 +792,18 @@ func TestSHA256MatchesFile(t *testing.T) {
 
 // TestWriteAndValidateRoundTrip verifies the write → validate cycle (INV-20..22).
 func TestWriteAndValidateRoundTrip(t *testing.T) {
-	b, err := createEvidenceBundleV2("main.go")
+	b, err := createEvidenceBundle("main.go")
 	if err != nil {
-		t.Fatalf("createEvidenceBundleV2: %v", err)
+		t.Fatalf("createEvidenceBundle: %v", err)
 	}
 
-	// INV-20: createEvidenceBundleV2 must not have written a file itself
+	// INV-20: createEvidenceBundle must not have written a file itself
 	outputPath := filepath.FromSlash(b.File.Path + ".evidence.yaml")
 	_ = os.Remove(outputPath) // clean any leftover from prior runs
 
-	// INV-21: writeEvidenceBundleV2 writes the companion file
-	if err := writeEvidenceBundleV2(b); err != nil {
-		t.Fatalf("writeEvidenceBundleV2: %v", err)
+	// INV-21: writeEvidenceBundle writes the companion file
+	if err := writeEvidenceBundle(b); err != nil {
+		t.Fatalf("writeEvidenceBundle: %v", err)
 	}
 	t.Cleanup(func() { os.Remove(outputPath) })
 
@@ -811,23 +811,23 @@ func TestWriteAndValidateRoundTrip(t *testing.T) {
 		t.Errorf("companion file not created at %q", outputPath)
 	}
 
-	// INV-22: validateEvidenceBundleV2 must succeed on a fresh bundle
-	if err := validateEvidenceBundleV2(b); err != nil {
-		t.Errorf("validateEvidenceBundleV2 failed on fresh bundle: %v", err)
+	// INV-22: validateEvidenceBundle must succeed on a fresh bundle
+	if err := validateEvidenceBundle(b); err != nil {
+		t.Errorf("validateEvidenceBundle failed on fresh bundle: %v", err)
 	}
 }
 
 // TestValidateStale verifies that a bundle with a wrong hash is rejected (INV-2).
 func TestValidateStale(t *testing.T) {
-	b, err := createEvidenceBundleV2("main.go")
+	b, err := createEvidenceBundle("main.go")
 	if err != nil {
-		t.Fatalf("createEvidenceBundleV2: %v", err)
+		t.Fatalf("createEvidenceBundle: %v", err)
 	}
 
 	// Tamper with the hash
 	b.File.SHA256 = strings.Repeat("0", 64)
 
-	err = validateEvidenceBundleV2(b)
+	err = validateEvidenceBundle(b)
 	if err == nil {
 		t.Error("expected error for stale bundle with wrong hash, got nil")
 	}
@@ -877,7 +877,7 @@ func TestWalkAndGenerate_Basic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var bundle EvidenceBundleV2
+	var bundle EvidenceBundle
 	if err := yaml.Unmarshal(data, &bundle); err != nil {
 		t.Fatal(err)
 	}
@@ -953,7 +953,7 @@ func TestWalkAndGenerate_RelativePaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var bundle EvidenceBundleV2
+	var bundle EvidenceBundle
 	if err := yaml.Unmarshal(data, &bundle); err != nil {
 		t.Fatal(err)
 	}

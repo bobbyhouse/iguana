@@ -1,8 +1,8 @@
 package main
 
-// evidence_v2.go — Semantic evidence bundle (version 2).
+// evidence.go — Semantic evidence bundle.
 //
-// v2 extends v1 with four additional sections derived from static analysis:
+// Four sections derived from static analysis:
 //
 //	package  — package name and sorted import list
 //	symbols  — all top-level declarations (functions, types, vars, consts)
@@ -11,9 +11,9 @@ package main
 //
 // Implementation separation (see INVARIANT.md INV-20..22):
 //
-//	createEvidenceBundleV2   — pure analysis, no side effects
-//	writeEvidenceBundleV2    — marshals + writes companion .evidence.yaml
-//	validateEvidenceBundleV2 — re-hashes file, returns error if stale
+//	createEvidenceBundle   — pure analysis, no side effects
+//	writeEvidenceBundle    — marshals + writes companion .evidence.yaml
+//	validateEvidenceBundle — re-hashes file, returns error if stale
 
 import (
 	"crypto/sha256"
@@ -37,12 +37,12 @@ import (
 // Data types
 // ---------------------------------------------------------------------------
 
-// EvidenceBundleV2 is the top-level container for a v2 evidence bundle.
+// EvidenceBundle is the top-level container for an evidence bundle.
 // Field order matches the desired YAML output order; yaml.v3 respects struct
 // field order, so no additional sorting is needed at the top level.
-type EvidenceBundleV2 struct {
+type EvidenceBundle struct {
 	Version int         `yaml:"version"`
-	File    FileMeta    `yaml:"file"`    // reuses FileMeta from main.go
+	File    FileMeta    `yaml:"file"`
 	Package PackageMeta `yaml:"package"`
 	Symbols Symbols     `yaml:"symbols"`
 	Calls   []Call      `yaml:"calls,omitempty"`
@@ -112,13 +112,13 @@ type Signals struct {
 // Public API — Generation / Serialization / Validation
 // ---------------------------------------------------------------------------
 
-// createEvidenceBundleV2 performs pure static analysis on a Go source file
-// and returns a v2 evidence bundle. It does not write any files (INV-20).
+// createEvidenceBundle performs pure static analysis on a Go source file
+// and returns an evidence bundle. It does not write any files (INV-20).
 //
 // It first attempts to load the package with full type information via
 // golang.org/x/tools/go/packages. On failure it falls back to AST-only
 // analysis — call targets and type strings are then best-effort.
-func createEvidenceBundleV2(filePath string) (*EvidenceBundleV2, error) {
+func createEvidenceBundle(filePath string) (*EvidenceBundle, error) {
 	// Step 1 — integrity (same as v1): read raw bytes, compute hash.
 	fileBytes, err := os.ReadFile(filePath)
 	if err != nil {
@@ -145,17 +145,17 @@ func createEvidenceBundleV2(filePath string) (*EvidenceBundleV2, error) {
 	return buildBundle(normalizedPath, hash, file, typesInfo, typesPkg), nil
 }
 
-// buildBundle assembles an EvidenceBundleV2 from pre-loaded AST and type data.
+// buildBundle assembles an EvidenceBundle from pre-loaded AST and type data.
 // normalizedPath is already slash-normalized; hash is the hex-encoded SHA256.
 // typesInfo and typesPkg may be nil (AST-only fallback).
-func buildBundle(normalizedPath, hash string, file *ast.File, typesInfo *types.Info, typesPkg *types.Package) *EvidenceBundleV2 {
+func buildBundle(normalizedPath, hash string, file *ast.File, typesInfo *types.Info, typesPkg *types.Package) *EvidenceBundle {
 	qualifier := makeQualifier(typesPkg)
 	pkgMeta := extractPackageMeta(file)
 	syms := extractSymbols(file, typesInfo, typesPkg, qualifier)
 	calls := extractCalls(file, typesInfo, typesPkg, qualifier)
 	sigs := extractSignals(pkgMeta, calls, file)
 
-	return &EvidenceBundleV2{
+	return &EvidenceBundle{
 		Version: 2,
 		File: FileMeta{
 			Path:   normalizedPath,
@@ -168,10 +168,10 @@ func buildBundle(normalizedPath, hash string, file *ast.File, typesInfo *types.I
 	}
 }
 
-// writeEvidenceBundleV2 marshals the bundle to YAML and writes it to the
+// writeEvidenceBundle marshals the bundle to YAML and writes it to the
 // companion file `<bundle.File.Path>.evidence.yaml` (INV-14, INV-21).
 // The file is overwritten entirely on each call.
-func writeEvidenceBundleV2(bundle *EvidenceBundleV2) error {
+func writeEvidenceBundle(bundle *EvidenceBundle) error {
 	data, err := yaml.Marshal(bundle)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
@@ -183,10 +183,10 @@ func writeEvidenceBundleV2(bundle *EvidenceBundleV2) error {
 	return nil
 }
 
-// validateEvidenceBundleV2 re-hashes the source file and returns an error if
+// validateEvidenceBundle re-hashes the source file and returns an error if
 // the current hash differs from the stored hash (INV-2, INV-22).
 // It does not modify any files.
-func validateEvidenceBundleV2(bundle *EvidenceBundleV2) error {
+func validateEvidenceBundle(bundle *EvidenceBundle) error {
 	filePath := filepath.FromSlash(bundle.File.Path)
 	raw, err := os.ReadFile(filePath)
 	if err != nil {
@@ -748,7 +748,7 @@ func extractSignals(meta PackageMeta, calls []Call, file *ast.File) Signals {
 // Directory Walking
 // ---------------------------------------------------------------------------
 
-// walkAndGenerate walks root recursively, generating a v2 evidence bundle for
+// walkAndGenerate walks root recursively, generating an evidence bundle for
 // every .go file found. Directories named vendor, testdata, or starting with
 // "." are skipped entirely (INV-24). Directories and files are processed in
 // sorted order (INV-25). Each directory's package is loaded once (INV-26).
@@ -829,12 +829,12 @@ func walkAndGenerate(root string) (written int, errs []error) {
 	return
 }
 
-// buildBundleForFile creates an EvidenceBundleV2 for a single file.
+// buildBundleForFile creates an EvidenceBundle for a single file.
 // It uses the pre-loaded pkg/fset when the file can be found in pkg.Syntax;
 // otherwise it falls back to go/parser with no type information.
 // absPath is the absolute filesystem path; relPath is the root-relative
 // forward-slash path stored as file.path in the bundle (INV-23).
-func buildBundleForFile(absPath, relPath string, pkg *packages.Package, fset *token.FileSet) (*EvidenceBundleV2, error) {
+func buildBundleForFile(absPath, relPath string, pkg *packages.Package, fset *token.FileSet) (*EvidenceBundle, error) {
 	fileBytes, err := os.ReadFile(absPath)
 	if err != nil {
 		return nil, fmt.Errorf("read file: %w", err)
@@ -864,7 +864,7 @@ func buildBundleForFile(absPath, relPath string, pkg *packages.Package, fset *to
 // writeBundleAt marshals bundle to YAML and writes it to absFilePath+".evidence.yaml".
 // The companion file is written using the absolute path so it lands next to the
 // source regardless of the caller's working directory (INV-14).
-func writeBundleAt(bundle *EvidenceBundleV2, absFilePath string) error {
+func writeBundleAt(bundle *EvidenceBundle, absFilePath string) error {
 	data, err := yaml.Marshal(bundle)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
