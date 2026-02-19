@@ -3,7 +3,7 @@ baml_client
 iguana
 
 # Gas Town (added by gt)
+.beads/
 .runtime/
 .claude/commands/
 .logs/
-.beads/redirect

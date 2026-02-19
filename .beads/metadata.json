@@ -1,7 +1,0 @@
-{
-  "backend": "dolt",
-  "database": "dolt",
-  "dolt_database": "iguana",
-  "dolt_mode": "server",
-  "jsonl_export": "issues.jsonl"
-}
