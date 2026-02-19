@@ -74,21 +74,21 @@ func TestEvidenceRefFormat(t *testing.T) {
 			path:     "pkg/auth/auth.go",
 			version:  2,
 			fragment: "",
-			want:     "bundle:pkg/auth/auth.go",
+			want:     "bundle:pkg/auth/auth.go@v2",
 		},
 		{
 			name:     "symbol fragment",
 			path:     "main.go",
 			version:  2,
 			fragment: "symbol:main",
-			want:     "bundle:main.go#symbol:main",
+			want:     "bundle:main.go@v2#symbol:main",
 		},
 		{
 			name:     "signal fragment",
 			path:     "server/server.go",
 			version:  2,
 			fragment: "signal:db_calls",
-			want:     "bundle:server/server.go#signal:db_calls",
+			want:     "bundle:server/server.go@v2#signal:db_calls",
 		},
 	}
 
