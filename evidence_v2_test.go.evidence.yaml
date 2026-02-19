@@ -1,0 +1,554 @@
+version: 2
+file:
+    path: evidence_v2_test.go
+    sha256: 67c445280eca0c493257e7a5b09478d64889f5e27c21df600016dd59a0497a72
+package:
+    name: main
+    imports:
+        - path: crypto/sha256
+        - path: encoding/hex
+        - path: go/ast
+        - path: go/parser
+        - path: go/token
+        - path: go/types
+        - path: gopkg.in/yaml.v3
+        - path: os
+        - path: path/filepath
+        - path: strings
+        - path: testing
+symbols:
+    functions:
+        - name: FuzzExprToString
+          exported: true
+          params:
+            - '*testing.F'
+        - name: FuzzParseGoSource
+          exported: true
+          params:
+            - '*testing.F'
+        - name: TestCreateEvidenceBundleV2_OnMainGo
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestDeterminism
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestExprToString
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestExtractCalls_Deduplication
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestExtractCalls_EnclosingFunction
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestExtractCalls_Sorted
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestExtractPackageMeta
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestExtractPackageMeta_NoImports
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestExtractSignals_AllFalse
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestExtractSignals_Concurrency_Chan
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestExtractSignals_Concurrency_GoStmt
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestExtractSignals_Concurrency_SyncImport
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestExtractSignals_DBCalls_Import
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestExtractSignals_FSReads
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestExtractSignals_FSWrites
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestExtractSignals_NetCalls_Import
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestExtractSymbols_Functions
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestExtractSymbols_Types
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestExtractSymbols_VarsConsts
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestNoPositionData
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestSHA256MatchesFile
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestSortedInvariants
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestTypeKind
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestValidateStale
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestWalkAndGenerate_Basic
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestWalkAndGenerate_RelativePaths
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestWalkAndGenerate_SkipsVendor
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestWriteAndValidateRoundTrip
+          exported: true
+          params:
+            - '*testing.T'
+        - name: containsStr
+          exported: false
+          params:
+            - '[]string'
+            - string
+          returns:
+            - bool
+        - name: nullQualifier
+          exported: false
+          params:
+            - '*types.Package'
+          returns:
+            - string
+        - name: parseSource
+          exported: false
+          params:
+            - '*testing.T'
+            - string
+          returns:
+            - '*ast.File'
+    variables:
+        - name: noTypeInfo
+          exported: false
+        - name: noTypePkg
+          exported: false
+calls:
+    - from: FuzzExprToString
+      to: f.Add
+    - from: FuzzExprToString
+      to: f.Fuzz
+    - from: FuzzExprToString.<anonymous>
+      to: exprToString
+    - from: FuzzParseGoSource
+      to: f.Add
+    - from: FuzzParseGoSource
+      to: f.Fuzz
+    - from: FuzzParseGoSource.<anonymous>
+      to: extractCalls
+    - from: FuzzParseGoSource.<anonymous>
+      to: extractPackageMeta
+    - from: FuzzParseGoSource.<anonymous>
+      to: extractSignals
+    - from: FuzzParseGoSource.<anonymous>
+      to: extractSymbols
+    - from: FuzzParseGoSource.<anonymous>
+      to: len
+    - from: FuzzParseGoSource.<anonymous>
+      to: parser.ParseFile
+    - from: FuzzParseGoSource.<anonymous>
+      to: t.Errorf
+    - from: FuzzParseGoSource.<anonymous>
+      to: token.NewFileSet
+    - from: TestCreateEvidenceBundleV2_OnMainGo
+      to: createEvidenceBundleV2
+    - from: TestCreateEvidenceBundleV2_OnMainGo
+      to: len
+    - from: TestCreateEvidenceBundleV2_OnMainGo
+      to: strings.Contains
+    - from: TestCreateEvidenceBundleV2_OnMainGo
+      to: t.Error
+    - from: TestCreateEvidenceBundleV2_OnMainGo
+      to: t.Errorf
+    - from: TestCreateEvidenceBundleV2_OnMainGo
+      to: t.Fatalf
+    - from: TestDeterminism
+      to: createEvidenceBundleV2
+    - from: TestDeterminism
+      to: string
+    - from: TestDeterminism
+      to: t.Errorf
+    - from: TestDeterminism
+      to: t.Fatalf
+    - from: TestDeterminism
+      to: yaml.Marshal
+    - from: TestExprToString
+      to: t.Run
+    - from: TestExprToString.<anonymous>
+      to: exprToString
+    - from: TestExprToString.<anonymous>
+      to: t.Errorf
+    - from: TestExtractCalls_Deduplication
+      to: extractCalls
+    - from: TestExtractCalls_Deduplication
+      to: parseSource
+    - from: TestExtractCalls_Deduplication
+      to: t.Errorf
+    - from: TestExtractCalls_EnclosingFunction
+      to: append
+    - from: TestExtractCalls_EnclosingFunction
+      to: containsStr
+    - from: TestExtractCalls_EnclosingFunction
+      to: extractCalls
+    - from: TestExtractCalls_EnclosingFunction
+      to: make
+    - from: TestExtractCalls_EnclosingFunction
+      to: parseSource
+    - from: TestExtractCalls_EnclosingFunction
+      to: t.Errorf
+    - from: TestExtractCalls_Sorted
+      to: extractCalls
+    - from: TestExtractCalls_Sorted
+      to: len
+    - from: TestExtractCalls_Sorted
+      to: parseSource
+    - from: TestExtractCalls_Sorted
+      to: t.Errorf
+    - from: TestExtractPackageMeta
+      to: extractPackageMeta
+    - from: TestExtractPackageMeta
+      to: len
+    - from: TestExtractPackageMeta
+      to: parseSource
+    - from: TestExtractPackageMeta
+      to: t.Errorf
+    - from: TestExtractPackageMeta
+      to: t.Fatalf
+    - from: TestExtractPackageMeta_NoImports
+      to: extractPackageMeta
+    - from: TestExtractPackageMeta_NoImports
+      to: len
+    - from: TestExtractPackageMeta_NoImports
+      to: parseSource
+    - from: TestExtractPackageMeta_NoImports
+      to: t.Errorf
+    - from: TestExtractSignals_AllFalse
+      to: extractCalls
+    - from: TestExtractSignals_AllFalse
+      to: extractPackageMeta
+    - from: TestExtractSignals_AllFalse
+      to: extractSignals
+    - from: TestExtractSignals_AllFalse
+      to: parseSource
+    - from: TestExtractSignals_AllFalse
+      to: t.Errorf
+    - from: TestExtractSignals_Concurrency_Chan
+      to: extractCalls
+    - from: TestExtractSignals_Concurrency_Chan
+      to: extractPackageMeta
+    - from: TestExtractSignals_Concurrency_Chan
+      to: extractSignals
+    - from: TestExtractSignals_Concurrency_Chan
+      to: parseSource
+    - from: TestExtractSignals_Concurrency_Chan
+      to: t.Error
+    - from: TestExtractSignals_Concurrency_GoStmt
+      to: extractCalls
+    - from: TestExtractSignals_Concurrency_GoStmt
+      to: extractPackageMeta
+    - from: TestExtractSignals_Concurrency_GoStmt
+      to: extractSignals
+    - from: TestExtractSignals_Concurrency_GoStmt
+      to: parseSource
+    - from: TestExtractSignals_Concurrency_GoStmt
+      to: t.Error
+    - from: TestExtractSignals_Concurrency_SyncImport
+      to: extractCalls
+    - from: TestExtractSignals_Concurrency_SyncImport
+      to: extractPackageMeta
+    - from: TestExtractSignals_Concurrency_SyncImport
+      to: extractSignals
+    - from: TestExtractSignals_Concurrency_SyncImport
+      to: parseSource
+    - from: TestExtractSignals_Concurrency_SyncImport
+      to: t.Error
+    - from: TestExtractSignals_DBCalls_Import
+      to: extractCalls
+    - from: TestExtractSignals_DBCalls_Import
+      to: extractPackageMeta
+    - from: TestExtractSignals_DBCalls_Import
+      to: extractSignals
+    - from: TestExtractSignals_DBCalls_Import
+      to: parseSource
+    - from: TestExtractSignals_DBCalls_Import
+      to: t.Error
+    - from: TestExtractSignals_FSReads
+      to: extractCalls
+    - from: TestExtractSignals_FSReads
+      to: extractPackageMeta
+    - from: TestExtractSignals_FSReads
+      to: extractSignals
+    - from: TestExtractSignals_FSReads
+      to: parseSource
+    - from: TestExtractSignals_FSReads
+      to: t.Error
+    - from: TestExtractSignals_FSWrites
+      to: extractCalls
+    - from: TestExtractSignals_FSWrites
+      to: extractPackageMeta
+    - from: TestExtractSignals_FSWrites
+      to: extractSignals
+    - from: TestExtractSignals_FSWrites
+      to: parseSource
+    - from: TestExtractSignals_FSWrites
+      to: t.Error
+    - from: TestExtractSignals_NetCalls_Import
+      to: extractCalls
+    - from: TestExtractSignals_NetCalls_Import
+      to: extractPackageMeta
+    - from: TestExtractSignals_NetCalls_Import
+      to: extractSignals
+    - from: TestExtractSignals_NetCalls_Import
+      to: parseSource
+    - from: TestExtractSignals_NetCalls_Import
+      to: t.Error
+    - from: TestExtractSymbols_Functions
+      to: ast.IsExported
+    - from: TestExtractSymbols_Functions
+      to: extractSymbols
+    - from: TestExtractSymbols_Functions
+      to: len
+    - from: TestExtractSymbols_Functions
+      to: make
+    - from: TestExtractSymbols_Functions
+      to: parseSource
+    - from: TestExtractSymbols_Functions
+      to: t.Error
+    - from: TestExtractSymbols_Functions
+      to: t.Errorf
+    - from: TestExtractSymbols_Functions
+      to: t.Fatal
+    - from: TestExtractSymbols_Functions
+      to: t.Fatalf
+    - from: TestExtractSymbols_Types
+      to: extractSymbols
+    - from: TestExtractSymbols_Types
+      to: len
+    - from: TestExtractSymbols_Types
+      to: parseSource
+    - from: TestExtractSymbols_Types
+      to: t.Errorf
+    - from: TestExtractSymbols_Types
+      to: t.Fatalf
+    - from: TestExtractSymbols_VarsConsts
+      to: extractSymbols
+    - from: TestExtractSymbols_VarsConsts
+      to: len
+    - from: TestExtractSymbols_VarsConsts
+      to: parseSource
+    - from: TestExtractSymbols_VarsConsts
+      to: t.Errorf
+    - from: TestExtractSymbols_VarsConsts
+      to: t.Fatalf
+    - from: TestNoPositionData
+      to: createEvidenceBundleV2
+    - from: TestNoPositionData
+      to: string
+    - from: TestNoPositionData
+      to: strings.Contains
+    - from: TestNoPositionData
+      to: t.Errorf
+    - from: TestNoPositionData
+      to: t.Fatalf
+    - from: TestNoPositionData
+      to: yaml.Marshal
+    - from: TestSHA256MatchesFile
+      to: createEvidenceBundleV2
+    - from: TestSHA256MatchesFile
+      to: hex.EncodeToString
+    - from: TestSHA256MatchesFile
+      to: os.ReadFile
+    - from: TestSHA256MatchesFile
+      to: sha256.Sum256
+    - from: TestSHA256MatchesFile
+      to: t.Errorf
+    - from: TestSHA256MatchesFile
+      to: t.Fatalf
+    - from: TestSortedInvariants
+      to: createEvidenceBundleV2
+    - from: TestSortedInvariants
+      to: len
+    - from: TestSortedInvariants
+      to: t.Errorf
+    - from: TestSortedInvariants
+      to: t.Fatalf
+    - from: TestTypeKind
+      to: t.Run
+    - from: TestTypeKind.<anonymous>
+      to: t.Errorf
+    - from: TestTypeKind.<anonymous>
+      to: typeKind
+    - from: TestValidateStale
+      to: createEvidenceBundleV2
+    - from: TestValidateStale
+      to: strings.Repeat
+    - from: TestValidateStale
+      to: t.Error
+    - from: TestValidateStale
+      to: t.Fatalf
+    - from: TestValidateStale
+      to: validateEvidenceBundleV2
+    - from: TestWalkAndGenerate_Basic
+      to: filepath.Join
+    - from: TestWalkAndGenerate_Basic
+      to: len
+    - from: TestWalkAndGenerate_Basic
+      to: os.IsNotExist
+    - from: TestWalkAndGenerate_Basic
+      to: os.ReadFile
+    - from: TestWalkAndGenerate_Basic
+      to: os.Stat
+    - from: TestWalkAndGenerate_Basic
+      to: os.WriteFile
+    - from: TestWalkAndGenerate_Basic
+      to: strings.HasPrefix
+    - from: TestWalkAndGenerate_Basic
+      to: t.Cleanup
+    - from: TestWalkAndGenerate_Basic
+      to: t.Errorf
+    - from: TestWalkAndGenerate_Basic
+      to: t.Fatal
+    - from: TestWalkAndGenerate_Basic
+      to: t.Fatalf
+    - from: TestWalkAndGenerate_Basic
+      to: t.TempDir
+    - from: TestWalkAndGenerate_Basic
+      to: walkAndGenerate
+    - from: TestWalkAndGenerate_Basic
+      to: yaml.Unmarshal
+    - from: TestWalkAndGenerate_Basic.<anonymous>
+      to: os.Remove
+    - from: TestWalkAndGenerate_RelativePaths
+      to: filepath.Join
+    - from: TestWalkAndGenerate_RelativePaths
+      to: len
+    - from: TestWalkAndGenerate_RelativePaths
+      to: os.Mkdir
+    - from: TestWalkAndGenerate_RelativePaths
+      to: os.ReadFile
+    - from: TestWalkAndGenerate_RelativePaths
+      to: os.WriteFile
+    - from: TestWalkAndGenerate_RelativePaths
+      to: strings.Contains
+    - from: TestWalkAndGenerate_RelativePaths
+      to: t.Cleanup
+    - from: TestWalkAndGenerate_RelativePaths
+      to: t.Errorf
+    - from: TestWalkAndGenerate_RelativePaths
+      to: t.Fatal
+    - from: TestWalkAndGenerate_RelativePaths
+      to: t.Fatalf
+    - from: TestWalkAndGenerate_RelativePaths
+      to: t.TempDir
+    - from: TestWalkAndGenerate_RelativePaths
+      to: walkAndGenerate
+    - from: TestWalkAndGenerate_RelativePaths
+      to: yaml.Unmarshal
+    - from: TestWalkAndGenerate_RelativePaths.<anonymous>
+      to: os.Remove
+    - from: TestWalkAndGenerate_SkipsVendor
+      to: filepath.Join
+    - from: TestWalkAndGenerate_SkipsVendor
+      to: len
+    - from: TestWalkAndGenerate_SkipsVendor
+      to: os.IsNotExist
+    - from: TestWalkAndGenerate_SkipsVendor
+      to: os.MkdirAll
+    - from: TestWalkAndGenerate_SkipsVendor
+      to: os.Remove
+    - from: TestWalkAndGenerate_SkipsVendor
+      to: os.Stat
+    - from: TestWalkAndGenerate_SkipsVendor
+      to: os.WriteFile
+    - from: TestWalkAndGenerate_SkipsVendor
+      to: t.Cleanup
+    - from: TestWalkAndGenerate_SkipsVendor
+      to: t.Errorf
+    - from: TestWalkAndGenerate_SkipsVendor
+      to: t.Fatal
+    - from: TestWalkAndGenerate_SkipsVendor
+      to: t.Fatalf
+    - from: TestWalkAndGenerate_SkipsVendor
+      to: t.TempDir
+    - from: TestWalkAndGenerate_SkipsVendor
+      to: walkAndGenerate
+    - from: TestWalkAndGenerate_SkipsVendor.<anonymous>
+      to: os.Remove
+    - from: TestWriteAndValidateRoundTrip
+      to: createEvidenceBundleV2
+    - from: TestWriteAndValidateRoundTrip
+      to: filepath.FromSlash
+    - from: TestWriteAndValidateRoundTrip
+      to: os.IsNotExist
+    - from: TestWriteAndValidateRoundTrip
+      to: os.Remove
+    - from: TestWriteAndValidateRoundTrip
+      to: os.Stat
+    - from: TestWriteAndValidateRoundTrip
+      to: t.Cleanup
+    - from: TestWriteAndValidateRoundTrip
+      to: t.Errorf
+    - from: TestWriteAndValidateRoundTrip
+      to: t.Fatalf
+    - from: TestWriteAndValidateRoundTrip
+      to: validateEvidenceBundleV2
+    - from: TestWriteAndValidateRoundTrip
+      to: writeEvidenceBundleV2
+    - from: TestWriteAndValidateRoundTrip.<anonymous>
+      to: os.Remove
+    - from: nullQualifier
+      to: p.Name
+    - from: parseSource
+      to: parser.ParseFile
+    - from: parseSource
+      to: t.Fatalf
+    - from: parseSource
+      to: t.Helper
+    - from: parseSource
+      to: token.NewFileSet
+signals:
+    fs_reads: true
+    fs_writes: true
+    db_calls: false
+    net_calls: false
+    concurrency: false

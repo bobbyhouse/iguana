@@ -1,0 +1,355 @@
+version: 2
+file:
+    path: system_model.go
+    sha256: dd1ddc92e7882bbb7f02336cda4601829706568897e236d6cebdc4b24bf08522
+package:
+    name: main
+    imports:
+        - path: context
+        - path: crypto/sha256
+        - path: encoding/hex
+        - path: fmt
+        - path: gopkg.in/yaml.v3
+        - path: iguana/baml_client
+          alias: b
+        - path: iguana/baml_client/types
+        - path: io/fs
+        - path: os
+        - path: path/filepath
+        - path: sort
+        - path: strings
+        - path: time
+symbols:
+    functions:
+        - name: GenerateSystemModel
+          exported: true
+          params:
+            - context.Context
+            - string
+          returns:
+            - '*SystemModel'
+            - error
+        - name: WriteSystemModel
+          exported: true
+          params:
+            - '*SystemModel'
+            - string
+          returns:
+            - error
+        - name: buildBoundaries
+          exported: false
+          params:
+            - '[]*EvidenceBundleV2'
+          returns:
+            - Boundaries
+        - name: buildConcurrencyDomains
+          exported: false
+          params:
+            - '[]*EvidenceBundleV2'
+          returns:
+            - '[]ConcurrencyDomain'
+        - name: buildEffects
+          exported: false
+          params:
+            - '[]*EvidenceBundleV2'
+          returns:
+            - '[]Effect'
+        - name: buildInventory
+          exported: false
+          params:
+            - '[]*EvidenceBundleV2'
+          returns:
+            - Inventory
+        - name: buildPackageSummaries
+          exported: false
+          params:
+            - '[]*EvidenceBundleV2'
+          returns:
+            - '[]types.PackageSummary'
+        - name: computeBundleSetHash
+          exported: false
+          params:
+            - '[]*EvidenceBundleV2'
+          returns:
+            - string
+        - name: evidenceRef
+          exported: false
+          params:
+            - string
+            - int
+            - string
+          returns:
+            - string
+        - name: hasSymbol
+          exported: false
+          params:
+            - '*EvidenceBundleV2'
+            - string
+          returns:
+            - bool
+        - name: loadEvidenceBundles
+          exported: false
+          params:
+            - string
+          returns:
+            - '[]*EvidenceBundleV2'
+            - error
+        - name: mapOpenQuestions
+          exported: false
+          params:
+            - '[]types.OpenQuestionSpec'
+          returns:
+            - '[]OpenQuestion'
+        - name: mapStateDomains
+          exported: false
+          params:
+            - '[]types.StateDomainSpec'
+            - '[]*EvidenceBundleV2'
+          returns:
+            - '[]StateDomain'
+        - name: mapTrustZones
+          exported: false
+          params:
+            - '[]types.TrustZoneSpec'
+            - '[]*EvidenceBundleV2'
+          returns:
+            - '[]TrustZone'
+        - name: pkgBundleRefs
+          exported: false
+          params:
+            - '[]*EvidenceBundleV2'
+            - '[]string'
+          returns:
+            - '[]string'
+        - name: sortedCopy
+          exported: false
+          params:
+            - '[]string'
+          returns:
+            - '[]string'
+    types:
+        - name: Boundaries
+          kind: struct
+          exported: true
+        - name: ConcurrencyDomain
+          kind: struct
+          exported: true
+        - name: Effect
+          kind: struct
+          exported: true
+        - name: Entrypoint
+          kind: struct
+          exported: true
+        - name: Inventory
+          kind: struct
+          exported: true
+        - name: ModelInputs
+          kind: struct
+          exported: true
+        - name: NetworkBoundary
+          kind: struct
+          exported: true
+        - name: OpenQuestion
+          kind: struct
+          exported: true
+        - name: PackageEntry
+          kind: struct
+          exported: true
+        - name: Persistence
+          kind: struct
+          exported: true
+        - name: PersistenceBoundary
+          kind: struct
+          exported: true
+        - name: ProcessBoundary
+          kind: struct
+          exported: true
+        - name: Representation
+          kind: struct
+          exported: true
+        - name: StateDomain
+          kind: struct
+          exported: true
+        - name: SymbolRef
+          kind: struct
+          exported: true
+        - name: SystemModel
+          kind: struct
+          exported: true
+        - name: Transition
+          kind: struct
+          exported: true
+        - name: TrustZone
+          kind: struct
+          exported: true
+calls:
+    - from: GenerateSystemModel
+      to: baml_client.InferSystemModel
+    - from: GenerateSystemModel
+      to: buildBoundaries
+    - from: GenerateSystemModel
+      to: buildConcurrencyDomains
+    - from: GenerateSystemModel
+      to: buildEffects
+    - from: GenerateSystemModel
+      to: buildInventory
+    - from: GenerateSystemModel
+      to: buildPackageSummaries
+    - from: GenerateSystemModel
+      to: computeBundleSetHash
+    - from: GenerateSystemModel
+      to: fmt.Errorf
+    - from: GenerateSystemModel
+      to: len
+    - from: GenerateSystemModel
+      to: loadEvidenceBundles
+    - from: GenerateSystemModel
+      to: mapOpenQuestions
+    - from: GenerateSystemModel
+      to: mapStateDomains
+    - from: GenerateSystemModel
+      to: mapTrustZones
+    - from: GenerateSystemModel
+      to: time.Format
+    - from: GenerateSystemModel
+      to: time.Now
+    - from: GenerateSystemModel
+      to: time.UTC
+    - from: WriteSystemModel
+      to: fmt.Errorf
+    - from: WriteSystemModel
+      to: os.WriteFile
+    - from: WriteSystemModel
+      to: yaml.Marshal
+    - from: buildBoundaries
+      to: append
+    - from: buildBoundaries
+      to: evidenceRef
+    - from: buildBoundaries
+      to: len
+    - from: buildConcurrencyDomains
+      to: append
+    - from: buildConcurrencyDomains
+      to: evidenceRef
+    - from: buildConcurrencyDomains
+      to: sort.Slice
+    - from: buildEffects
+      to: append
+    - from: buildEffects
+      to: evidenceRef
+    - from: buildEffects
+      to: sort.Slice
+    - from: buildInventory
+      to: append
+    - from: buildInventory
+      to: evidenceRef
+    - from: buildInventory
+      to: hasSymbol
+    - from: buildInventory
+      to: len
+    - from: buildInventory
+      to: make
+    - from: buildInventory
+      to: sort.Strings
+    - from: buildPackageSummaries
+      to: append
+    - from: buildPackageSummaries
+      to: hasAnySignal
+    - from: buildPackageSummaries
+      to: len
+    - from: buildPackageSummaries
+      to: make
+    - from: buildPackageSummaries
+      to: sort.Strings
+    - from: buildPackageSummaries
+      to: top10
+    - from: buildPackageSummaries.<anonymous>
+      to: append
+    - from: buildPackageSummaries.<anonymous>
+      to: len
+    - from: buildPackageSummaries.<anonymous>
+      to: make
+    - from: buildPackageSummaries.<anonymous>
+      to: sort.Strings
+    - from: computeBundleSetHash
+      to: hex.EncodeToString
+    - from: computeBundleSetHash
+      to: len
+    - from: computeBundleSetHash
+      to: make
+    - from: computeBundleSetHash
+      to: sha256.Sum256
+    - from: computeBundleSetHash
+      to: sort.Strings
+    - from: computeBundleSetHash
+      to: strings.Join
+    - from: evidenceRef
+      to: fmt.Sprintf
+    - from: loadEvidenceBundles
+      to: filepath.WalkDir
+    - from: loadEvidenceBundles
+      to: fmt.Errorf
+    - from: loadEvidenceBundles
+      to: sort.Slice
+    - from: loadEvidenceBundles.<anonymous>
+      to: append
+    - from: loadEvidenceBundles.<anonymous>
+      to: fmt.Errorf
+    - from: loadEvidenceBundles.<anonymous>
+      to: fs.IsDir
+    - from: loadEvidenceBundles.<anonymous>
+      to: fs.Name
+    - from: loadEvidenceBundles.<anonymous>
+      to: os.ReadFile
+    - from: loadEvidenceBundles.<anonymous>
+      to: strings.HasPrefix
+    - from: loadEvidenceBundles.<anonymous>
+      to: strings.HasSuffix
+    - from: loadEvidenceBundles.<anonymous>
+      to: yaml.Unmarshal
+    - from: mapOpenQuestions
+      to: append
+    - from: mapOpenQuestions
+      to: sort.Slice
+    - from: mapOpenQuestions
+      to: sortedCopy
+    - from: mapStateDomains
+      to: append
+    - from: mapStateDomains
+      to: pkgBundleRefs
+    - from: mapStateDomains
+      to: sort.Slice
+    - from: mapStateDomains
+      to: sortedCopy
+    - from: mapTrustZones
+      to: append
+    - from: mapTrustZones
+      to: pkgBundleRefs
+    - from: mapTrustZones
+      to: sort.Slice
+    - from: mapTrustZones
+      to: sortedCopy
+    - from: pkgBundleRefs
+      to: append
+    - from: pkgBundleRefs
+      to: evidenceRef
+    - from: pkgBundleRefs
+      to: len
+    - from: pkgBundleRefs
+      to: make
+    - from: pkgBundleRefs
+      to: sort.Strings
+    - from: sortedCopy
+      to: copy
+    - from: sortedCopy
+      to: len
+    - from: sortedCopy
+      to: make
+    - from: sortedCopy
+      to: sort.Strings
+signals:
+    fs_reads: true
+    fs_writes: true
+    db_calls: false
+    net_calls: false
+    concurrency: false

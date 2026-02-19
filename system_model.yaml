@@ -1,0 +1,181 @@
+version: 1
+generated_at: "2026-02-19T01:11:34Z"
+inputs:
+    bundle_set_sha256: 05d817a224bb7e21879c33569c900e52ded91a2f5e4339fa4cd0fe10499744bf
+inventory:
+    packages:
+        - name: main
+          files:
+            - evidence_v2.go
+            - evidence_v2_test.go
+            - main.go
+            - main_test.go
+            - system_model.go
+            - system_model_test.go
+          evidence_refs:
+            - bundle:evidence_v2.go@v2
+            - bundle:evidence_v2_test.go@v2
+            - bundle:main.go@v2
+            - bundle:main_test.go@v2
+            - bundle:system_model.go@v2
+            - bundle:system_model_test.go@v2
+    entrypoints:
+        - package: main
+          symbol: main
+          evidence_refs:
+            - bundle:main.go@v2#symbol:main
+state_domains:
+    - id: code_representation
+      description: Domain representing parsed Go code structures and function calls
+      owners:
+        - main
+      aggregate: Function
+      representations:
+        - Call
+      primary_mutators:
+        - FuzzParseGoSource
+      primary_readers:
+        - FuzzExprToString
+      evidence_refs:
+        - bundle:evidence_v2.go@v2
+        - bundle:evidence_v2_test.go@v2
+        - bundle:main.go@v2
+        - bundle:main_test.go@v2
+        - bundle:system_model.go@v2
+        - bundle:system_model_test.go@v2
+      confidence: 0.6
+    - id: evidence_analysis
+      description: Domain managing Go codebase evidence collection and bundling for static analysis
+      owners:
+        - main
+      aggregate: EvidenceBundle
+      representations:
+        - EvidenceBundleV2
+        - FileMeta
+        - Import
+      primary_mutators:
+        - FuzzParseGoSource
+        - GenerateSystemModel
+      primary_readers:
+        - TestBuildInventory_Entrypoints
+        - TestBuildInventory_GroupsByPackage
+        - TestCategorizeFile
+      evidence_refs:
+        - bundle:evidence_v2.go@v2
+        - bundle:evidence_v2_test.go@v2
+        - bundle:main.go@v2
+        - bundle:main_test.go@v2
+        - bundle:system_model.go@v2
+        - bundle:system_model_test.go@v2
+      confidence: 0.8
+    - id: system_modeling
+      description: Domain modeling system architecture through boundaries, effects, and concurrency analysis
+      owners:
+        - main
+      aggregate: Boundaries
+      representations:
+        - ConcurrencyDomain
+        - Effect
+        - Entrypoint
+      primary_mutators:
+        - GenerateSystemModel
+      primary_readers:
+        - TestBuildBoundaries_DBCalls
+        - TestBuildBoundaries_NetCalls
+        - TestBuildEffects_FromSignals
+        - TestBuildEffects_Sorted
+      evidence_refs:
+        - bundle:evidence_v2.go@v2
+        - bundle:evidence_v2_test.go@v2
+        - bundle:main.go@v2
+        - bundle:main_test.go@v2
+        - bundle:system_model.go@v2
+        - bundle:system_model_test.go@v2
+      confidence: 0.8
+boundaries:
+    persistence:
+        - kind: fs
+          writers:
+            - file: evidence_v2.go
+              evidence_refs:
+                - bundle:evidence_v2.go@v2#signal:fs_writes
+            - file: evidence_v2_test.go
+              evidence_refs:
+                - bundle:evidence_v2_test.go@v2#signal:fs_writes
+            - file: system_model.go
+              evidence_refs:
+                - bundle:system_model.go@v2#signal:fs_writes
+            - file: system_model_test.go
+              evidence_refs:
+                - bundle:system_model_test.go@v2#signal:fs_writes
+effects:
+    - kind: fs_read
+      domain: code_representation
+      via: evidence_v2.go
+      evidence_refs:
+        - bundle:evidence_v2.go@v2#signal:fs_reads
+    - kind: fs_read
+      domain: code_representation
+      via: evidence_v2_test.go
+      evidence_refs:
+        - bundle:evidence_v2_test.go@v2#signal:fs_reads
+    - kind: fs_read
+      domain: code_representation
+      via: main.go
+      evidence_refs:
+        - bundle:main.go@v2#signal:fs_reads
+    - kind: fs_read
+      domain: code_representation
+      via: system_model.go
+      evidence_refs:
+        - bundle:system_model.go@v2#signal:fs_reads
+    - kind: fs_write
+      domain: code_representation
+      via: evidence_v2.go
+      evidence_refs:
+        - bundle:evidence_v2.go@v2#signal:fs_writes
+    - kind: fs_write
+      domain: code_representation
+      via: evidence_v2_test.go
+      evidence_refs:
+        - bundle:evidence_v2_test.go@v2#signal:fs_writes
+    - kind: fs_write
+      domain: code_representation
+      via: system_model.go
+      evidence_refs:
+        - bundle:system_model.go@v2#signal:fs_writes
+    - kind: fs_write
+      domain: code_representation
+      via: system_model_test.go
+      evidence_refs:
+        - bundle:system_model_test.go@v2#signal:fs_writes
+trust_zones:
+    - id: internal
+      packages:
+        - main
+      evidence_refs:
+        - bundle:evidence_v2.go@v2
+        - bundle:evidence_v2_test.go@v2
+        - bundle:main.go@v2
+        - bundle:main_test.go@v2
+        - bundle:system_model.go@v2
+        - bundle:system_model_test.go@v2
+open_questions:
+    - question: How are the boundaries between different system components determined and validated?
+      related_domain: system_modeling
+      missing_evidence:
+        - boundary detection algorithms
+        - dependency analysis
+        - validation rules
+    - question: What is the relationship between EvidenceBundle and EvidenceBundleV2 types?
+      related_domain: evidence_analysis
+      missing_evidence:
+        - compatibility requirements
+        - structural differences
+        - version migration logic
+    - question: What specific data structures and persistence mechanisms are used for evidence storage?
+      related_domain: evidence_analysis
+      missing_evidence:
+        - database schemas
+        - file formats
+        - serialization details

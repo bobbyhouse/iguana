@@ -1,0 +1,99 @@
+version: 2
+file:
+    path: main.go
+    sha256: 32746449bfb73fd5f262afd2a3d682dd27842835f412b3f865c70a5c347f1f6b
+package:
+    name: main
+    imports:
+        - path: context
+        - path: crypto/sha256
+        - path: encoding/hex
+        - path: fmt
+        - path: gopkg.in/yaml.v3
+        - path: iguana/baml_client
+          alias: b
+        - path: iguana/baml_client/types
+        - path: log
+        - path: os
+        - path: path/filepath
+        - path: strings
+symbols:
+    functions:
+        - name: categorizeFile
+          exported: false
+          params:
+            - string
+          returns:
+            - types.State
+            - error
+        - name: createEvidenceBundle
+          exported: false
+          params:
+            - string
+          returns:
+            - EvidenceBundle
+            - error
+        - name: main
+          exported: false
+    types:
+        - name: EvidenceBundle
+          kind: struct
+          exported: true
+        - name: FileMeta
+          kind: struct
+          exported: true
+calls:
+    - from: categorizeFile
+      to: baml_client.TypeOfState
+    - from: categorizeFile
+      to: context.Background
+    - from: categorizeFile
+      to: os.ReadFile
+    - from: createEvidenceBundle
+      to: hex.EncodeToString
+    - from: createEvidenceBundle
+      to: os.ReadFile
+    - from: createEvidenceBundle
+      to: sha256.Sum256
+    - from: main
+      to: GenerateSystemModel
+    - from: main
+      to: WriteSystemModel
+    - from: main
+      to: context.Background
+    - from: main
+      to: createEvidenceBundle
+    - from: main
+      to: createEvidenceBundleV2
+    - from: main
+      to: filepath.Join
+    - from: main
+      to: fmt.Fprintf
+    - from: main
+      to: fmt.Print
+    - from: main
+      to: fmt.Printf
+    - from: main
+      to: fs.IsDir
+    - from: main
+      to: len
+    - from: main
+      to: log.Fatal
+    - from: main
+      to: os.Exit
+    - from: main
+      to: os.Stat
+    - from: main
+      to: strings.HasSuffix
+    - from: main
+      to: walkAndGenerate
+    - from: main
+      to: writeEvidenceBundleV2
+    - from: main
+      to: yaml.Marshal
+signals:
+    fs_reads: true
+    fs_writes: false
+    db_calls: false
+    net_calls: false
+    concurrency: false

@@ -1,0 +1,184 @@
+version: 2
+file:
+    path: system_model_test.go
+    sha256: b31dd607cd96f7c5f4a02b9c08c4b485cea2598a9853b1bd70eb62392d3f83fa
+package:
+    name: main
+    imports:
+        - path: gopkg.in/yaml.v3
+        - path: os
+        - path: path/filepath
+        - path: testing
+symbols:
+    functions:
+        - name: TestBuildBoundaries_DBCalls
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestBuildBoundaries_NetCalls
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestBuildEffects_FromSignals
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestBuildEffects_Sorted
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestBuildInventory_Entrypoints
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestBuildInventory_GroupsByPackage
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestComputeBundleSetHash_Deterministic
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestEvidenceRefFormat
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestLoadEvidenceBundles_Basic
+          exported: true
+          params:
+            - '*testing.T'
+        - name: TestLoadEvidenceBundles_Empty
+          exported: true
+          params:
+            - '*testing.T'
+        - name: makeTestBundle
+          exported: false
+          params:
+            - string
+            - string
+            - string
+            - Signals
+          returns:
+            - '*EvidenceBundleV2'
+        - name: writeTestBundle
+          exported: false
+          params:
+            - '*testing.T'
+            - string
+            - string
+            - '*EvidenceBundleV2'
+          returns:
+            - string
+calls:
+    - from: TestBuildBoundaries_DBCalls
+      to: buildBoundaries
+    - from: TestBuildBoundaries_DBCalls
+      to: len
+    - from: TestBuildBoundaries_DBCalls
+      to: makeTestBundle
+    - from: TestBuildBoundaries_DBCalls
+      to: t.Error
+    - from: TestBuildBoundaries_DBCalls
+      to: t.Fatal
+    - from: TestBuildBoundaries_NetCalls
+      to: buildBoundaries
+    - from: TestBuildBoundaries_NetCalls
+      to: len
+    - from: TestBuildBoundaries_NetCalls
+      to: makeTestBundle
+    - from: TestBuildBoundaries_NetCalls
+      to: t.Error
+    - from: TestBuildBoundaries_NetCalls
+      to: t.Fatal
+    - from: TestBuildEffects_FromSignals
+      to: buildEffects
+    - from: TestBuildEffects_FromSignals
+      to: make
+    - from: TestBuildEffects_FromSignals
+      to: makeTestBundle
+    - from: TestBuildEffects_FromSignals
+      to: t.Errorf
+    - from: TestBuildEffects_Sorted
+      to: buildEffects
+    - from: TestBuildEffects_Sorted
+      to: len
+    - from: TestBuildEffects_Sorted
+      to: makeTestBundle
+    - from: TestBuildEffects_Sorted
+      to: t.Errorf
+    - from: TestBuildInventory_Entrypoints
+      to: buildInventory
+    - from: TestBuildInventory_Entrypoints
+      to: len
+    - from: TestBuildInventory_Entrypoints
+      to: t.Error
+    - from: TestBuildInventory_Entrypoints
+      to: t.Errorf
+    - from: TestBuildInventory_Entrypoints
+      to: t.Fatalf
+    - from: TestBuildInventory_GroupsByPackage
+      to: buildInventory
+    - from: TestBuildInventory_GroupsByPackage
+      to: len
+    - from: TestBuildInventory_GroupsByPackage
+      to: makeTestBundle
+    - from: TestBuildInventory_GroupsByPackage
+      to: t.Errorf
+    - from: TestBuildInventory_GroupsByPackage
+      to: t.Fatalf
+    - from: TestComputeBundleSetHash_Deterministic
+      to: computeBundleSetHash
+    - from: TestComputeBundleSetHash_Deterministic
+      to: len
+    - from: TestComputeBundleSetHash_Deterministic
+      to: makeTestBundle
+    - from: TestComputeBundleSetHash_Deterministic
+      to: t.Errorf
+    - from: TestEvidenceRefFormat
+      to: t.Run
+    - from: TestEvidenceRefFormat.<anonymous>
+      to: evidenceRef
+    - from: TestEvidenceRefFormat.<anonymous>
+      to: t.Errorf
+    - from: TestLoadEvidenceBundles_Basic
+      to: len
+    - from: TestLoadEvidenceBundles_Basic
+      to: loadEvidenceBundles
+    - from: TestLoadEvidenceBundles_Basic
+      to: makeTestBundle
+    - from: TestLoadEvidenceBundles_Basic
+      to: t.Error
+    - from: TestLoadEvidenceBundles_Basic
+      to: t.Errorf
+    - from: TestLoadEvidenceBundles_Basic
+      to: t.Fatalf
+    - from: TestLoadEvidenceBundles_Basic
+      to: t.TempDir
+    - from: TestLoadEvidenceBundles_Basic
+      to: writeTestBundle
+    - from: TestLoadEvidenceBundles_Empty
+      to: len
+    - from: TestLoadEvidenceBundles_Empty
+      to: loadEvidenceBundles
+    - from: TestLoadEvidenceBundles_Empty
+      to: t.Errorf
+    - from: TestLoadEvidenceBundles_Empty
+      to: t.Fatalf
+    - from: TestLoadEvidenceBundles_Empty
+      to: t.TempDir
+    - from: writeTestBundle
+      to: filepath.Join
+    - from: writeTestBundle
+      to: os.WriteFile
+    - from: writeTestBundle
+      to: t.Fatalf
+    - from: writeTestBundle
+      to: t.Helper
+    - from: writeTestBundle
+      to: yaml.Marshal
+signals:
+    fs_reads: false
+    fs_writes: true
+    db_calls: false
+    net_calls: false
+    concurrency: false
