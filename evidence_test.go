@@ -974,11 +974,11 @@ func TestWalkAndGenerate_RelativePaths(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
-// Unit tests — extractSymbols constructors (INV-45)
+// Unit tests — extractSymbols constructors (INV-49)
 // --------------------------------------------------------------------------
 
 // TestConstructorsExtracted verifies that a function returning a package-local
-// type is included in symbols.constructors (INV-45).
+// type is included in symbols.constructors (INV-49).
 func TestConstructorsExtracted(t *testing.T) {
 	src := `package pkg
 
@@ -999,7 +999,7 @@ func helper() int       { return 0 }
 }
 
 // TestConstructors_SliceReturn verifies that a function returning []LocalType
-// is also recognized as a constructor (INV-45).
+// is also recognized as a constructor (INV-49).
 func TestConstructors_SliceReturn(t *testing.T) {
 	src := `package pkg
 
@@ -1016,7 +1016,7 @@ func NewItems() []Item { return nil }
 }
 
 // TestConstructors_MethodNotConstructor verifies that methods (with receivers)
-// are never listed as constructors (INV-45).
+// are never listed as constructors (INV-49).
 func TestConstructors_MethodNotConstructor(t *testing.T) {
 	src := `package pkg
 
@@ -1033,7 +1033,7 @@ func (f *Foo) Clone() *Foo { return nil }
 }
 
 // TestConstructors_NoLocalTypes verifies that constructors is empty when the
-// file declares no types (INV-45).
+// file declares no types (INV-49).
 func TestConstructors_NoLocalTypes(t *testing.T) {
 	src := `package pkg
 
@@ -1048,7 +1048,7 @@ func New() int { return 0 }
 }
 
 // TestConstructors_Sorted verifies constructors are sorted lexicographically
-// (INV-45 + INV-28 consistency).
+// (INV-49 + INV-28 consistency).
 func TestConstructors_Sorted(t *testing.T) {
 	src := `package pkg
 
@@ -1073,11 +1073,11 @@ func Middle() *T { return nil }
 }
 
 // --------------------------------------------------------------------------
-// Unit tests — extractSymbols struct fields (INV-46)
+// Unit tests — extractSymbols struct fields (INV-48)
 // --------------------------------------------------------------------------
 
 // TestStructFieldsExtracted verifies exported struct fields are captured in
-// declaration order with correct TypeStr values (INV-46).
+// declaration order with correct TypeStr values (INV-48).
 func TestStructFieldsExtracted(t *testing.T) {
 	src := `package pkg
 
@@ -1108,7 +1108,7 @@ type Address struct{}
 	if len(person.Fields) != 3 {
 		t.Fatalf("expected 3 fields, got %d: %v", len(person.Fields), person.Fields)
 	}
-	// Declaration order is preserved (INV-46).
+	// Declaration order is preserved (INV-48).
 	wantFields := []struct{ name, typeStr string }{
 		{"Name", "string"},
 		{"Age", "int"},
@@ -1124,7 +1124,7 @@ type Address struct{}
 }
 
 // TestStructFields_UnexportedSkipped verifies that unexported fields are not
-// included in TypeDecl.Fields (INV-46).
+// included in TypeDecl.Fields (INV-48).
 func TestStructFields_UnexportedSkipped(t *testing.T) {
 	src := `package pkg
 
@@ -1154,7 +1154,7 @@ type Mixed struct {
 }
 
 // TestStructFields_NonStructNoFields verifies that interface and alias TypeDecls
-// have no Fields entry (INV-46).
+// have no Fields entry (INV-48).
 func TestStructFields_NonStructNoFields(t *testing.T) {
 	src := `package pkg
 
@@ -1173,7 +1173,7 @@ type ID = string
 }
 
 // TestStructFields_EmbeddedExported verifies that embedded exported types are
-// captured with their type name as the field name (INV-46).
+// captured with their type name as the field name (INV-48).
 func TestStructFields_EmbeddedExported(t *testing.T) {
 	src := `package pkg
 
@@ -1210,11 +1210,11 @@ type Child struct {
 }
 
 // --------------------------------------------------------------------------
-// Unit tests — extractSignals yaml_io / json_io (INV-47)
+// Unit tests — extractSignals yaml_io / json_io (INV-49)
 // --------------------------------------------------------------------------
 
 // TestExtractSignals_YAMLImport verifies yaml_io is set when a yaml library
-// is imported (INV-47).
+// is imported (INV-49).
 func TestExtractSignals_YAMLImport(t *testing.T) {
 	src := `package pkg
 import _ "gopkg.in/yaml.v3"
@@ -1231,7 +1231,7 @@ func f() {}
 }
 
 // TestExtractSignals_YAMLCall verifies yaml_io is set when a yaml.* call
-// appears in the call list (INV-47).
+// appears in the call list (INV-49).
 func TestExtractSignals_YAMLCall(t *testing.T) {
 	src := `package pkg
 import "gopkg.in/yaml.v3"
@@ -1248,7 +1248,7 @@ func f() { yaml.Marshal(nil) }
 }
 
 // TestExtractSignals_JSONImport verifies json_io is set when encoding/json
-// is imported (INV-47).
+// is imported (INV-49).
 func TestExtractSignals_JSONImport(t *testing.T) {
 	src := `package pkg
 import _ "encoding/json"
@@ -1265,7 +1265,7 @@ func f() {}
 }
 
 // TestExtractSignals_JSONCall verifies json_io is set when a json.* call
-// appears in the call list (INV-47).
+// appears in the call list (INV-49).
 func TestExtractSignals_JSONCall(t *testing.T) {
 	src := `package pkg
 import "encoding/json"
@@ -1282,7 +1282,7 @@ func f() { json.Marshal(nil) }
 }
 
 // TestExtractSignals_YAMLNotJSON verifies yaml_io does not imply json_io and
-// vice versa (INV-47 independence).
+// vice versa (INV-49 independence).
 func TestExtractSignals_YAMLNotJSON(t *testing.T) {
 	src := `package pkg
 import _ "gopkg.in/yaml.v3"

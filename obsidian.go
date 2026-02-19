@@ -11,7 +11,7 @@ package main
 //  2. Effect edges    — package → state domains it writes or reads (causality)
 //  3. Concurrency risk — concurrent files → state domains they touch (race risk)
 //
-// See INVARIANT.md INV-32..36.
+// See INVARIANT.md INV-42..46.
 
 import (
 	"fmt"
@@ -228,10 +228,10 @@ func buildConcurrencyToDomains(concDomains []ConcurrencyDomain, effects []Effect
 
 // GenerateObsidianVault writes an Obsidian-compatible markdown vault rooted at
 // outputDir from the given SystemModel. Subdirectories are created as needed.
-// Existing files are overwritten (INV-36). Produces identical output when called
-// twice with the same inputs (INV-34).
+// Existing files are overwritten (INV-46). Produces identical output when called
+// twice with the same inputs (INV-44).
 func GenerateObsidianVault(model *SystemModel, outputDir string) error {
-	// INV-32: always create these subdirectories.
+	// INV-42: always create these subdirectories.
 	for _, sub := range []string{"packages", "state-domains", "trust-zones", "concurrency-domains"} {
 		if err := os.MkdirAll(filepath.Join(outputDir, sub), 0o755); err != nil {
 			return fmt.Errorf("mkdir %s: %w", sub, err)
@@ -608,7 +608,7 @@ func frontmatter(tag string) string {
 }
 
 // sanitizeFilename replaces / and . with -, collapses consecutive - to one,
-// and trims leading/trailing - (INV-35).
+// and trims leading/trailing - (INV-45).
 func sanitizeFilename(s string) string {
 	s = strings.ReplaceAll(s, "/", "-")
 	s = strings.ReplaceAll(s, ".", "-")

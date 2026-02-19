@@ -6,10 +6,10 @@ package main
 // call GenerateObsidianVault, then assert on file contents.
 //
 // Invariants tested:
-//   INV-32: subdirectory structure always created
-//   INV-33: wiki links use [[path|display]] with no .md extension
-//   INV-34: idempotent — byte-identical output on second run
-//   INV-35: filename sanitization (/ and . → -, collapse runs, trim)
+//   INV-42: subdirectory structure always created
+//   INV-43: wiki links use [[path|display]] with no .md extension
+//   INV-44: idempotent — byte-identical output on second run
+//   INV-45: filename sanitization (/ and . → -, collapse runs, trim)
 
 import (
 	"os"
@@ -85,10 +85,10 @@ func readFile(t *testing.T, path string) string {
 }
 
 // ---------------------------------------------------------------------------
-// INV-35: sanitizeFilename
+// INV-45: sanitizeFilename
 // ---------------------------------------------------------------------------
 
-// TestSanitizeFilename verifies INV-35: / and . are replaced with -, consecutive
+// TestSanitizeFilename verifies INV-45: / and . are replaced with -, consecutive
 // dashes are collapsed, and leading/trailing dashes are trimmed.
 func TestSanitizeFilename(t *testing.T) {
 	tests := []struct {
@@ -122,10 +122,10 @@ func TestSanitizeFilename(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// INV-32: vault directory structure
+// INV-42: vault directory structure
 // ---------------------------------------------------------------------------
 
-// TestGenerateObsidianVault_DirectoryStructure verifies INV-32: the four
+// TestGenerateObsidianVault_DirectoryStructure verifies INV-42: the four
 // required subdirectories are always created, even with a minimal model.
 func TestGenerateObsidianVault_DirectoryStructure(t *testing.T) {
 	dir := t.TempDir()
@@ -154,10 +154,10 @@ func TestGenerateObsidianVault_DirectoryStructure(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// INV-33: wiki link format in index
+// INV-43: wiki link format in index
 // ---------------------------------------------------------------------------
 
-// TestGenerateObsidianVault_IndexContainsLinks verifies INV-33: index.md uses
+// TestGenerateObsidianVault_IndexContainsLinks verifies INV-43: index.md uses
 // [[path|display]] wiki links with no .md extension in the path component.
 func TestGenerateObsidianVault_IndexContainsLinks(t *testing.T) {
 	dir := t.TempDir()
@@ -181,7 +181,7 @@ func TestGenerateObsidianVault_IndexContainsLinks(t *testing.T) {
 	if !strings.Contains(content, "[[trust-zones/internal|internal]]") {
 		t.Errorf("index.md missing trust-zone wiki link;\ngot:\n%s", content)
 	}
-	// No .md extension anywhere in wiki link paths (INV-33).
+	// No .md extension anywhere in wiki link paths (INV-43).
 	lines := strings.Split(content, "\n")
 	for _, line := range lines {
 		if idx := strings.Index(line, "[["); idx >= 0 {
@@ -320,10 +320,10 @@ func TestGenerateObsidianVault_EffectsNote(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// INV-34: idempotency
+// INV-44: idempotency
 // ---------------------------------------------------------------------------
 
-// TestGenerateObsidianVault_Idempotent verifies INV-34: calling
+// TestGenerateObsidianVault_Idempotent verifies INV-44: calling
 // GenerateObsidianVault twice on the same model produces byte-identical files.
 func TestGenerateObsidianVault_Idempotent(t *testing.T) {
 	dir := t.TempDir()

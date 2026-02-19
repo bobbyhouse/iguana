@@ -74,7 +74,7 @@ type Symbols struct {
 	Types        []TypeDecl `yaml:"types,omitempty"`
 	Variables    []VarDecl  `yaml:"variables,omitempty"`
 	Constants    []VarDecl  `yaml:"constants,omitempty"`
-	Constructors []string   `yaml:"constructors,omitempty"` // INV-45: functions returning package-local types
+	Constructors []string   `yaml:"constructors,omitempty"` // INV-49: functions returning package-local types
 }
 
 // Function describes a top-level function or method declaration.
@@ -97,7 +97,7 @@ type TypeDecl struct {
 	Name     string      `yaml:"name"`
 	Kind     string      `yaml:"kind"` // "struct" | "interface" | "alias"
 	Exported bool        `yaml:"exported"`
-	Fields   []FieldDecl `yaml:"fields,omitempty"` // INV-46: struct only, declaration order
+	Fields   []FieldDecl `yaml:"fields,omitempty"` // INV-48: struct only, declaration order
 }
 
 // VarDecl describes a top-level variable or constant declaration.
@@ -120,8 +120,8 @@ type Signals struct {
 	DBCalls     bool `yaml:"db_calls"`
 	NetCalls    bool `yaml:"net_calls"`
 	Concurrency bool `yaml:"concurrency"`
-	YAMLio      bool `yaml:"yaml_io"` // INV-47: imports yaml library or calls yaml.*
-	JSONio      bool `yaml:"json_io"` // INV-47: imports encoding/json or calls json.*
+	YAMLio      bool `yaml:"yaml_io"` // INV-49: imports yaml library or calls yaml.*
+	JSONio      bool `yaml:"json_io"` // INV-49: imports encoding/json or calls json.*
 }
 
 // ---------------------------------------------------------------------------
@@ -352,7 +352,7 @@ func extractSymbols(file *ast.File, typesInfo *types.Info, pkg *types.Package, q
 						Kind:     typeKind(ts.Type),
 						Exported: ast.IsExported(ts.Name.Name),
 					}
-					// INV-46: extract exported fields for struct types.
+					// INV-48: extract exported fields for struct types.
 					if st, ok := ts.Type.(*ast.StructType); ok {
 						td.Fields = extractStructFields(st)
 					}
@@ -387,7 +387,7 @@ func extractSymbols(file *ast.File, typesInfo *types.Info, pkg *types.Package, q
 	sort.Slice(syms.Variables, func(i, j int) bool { return syms.Variables[i].Name < syms.Variables[j].Name })
 	sort.Slice(syms.Constants, func(i, j int) bool { return syms.Constants[i].Name < syms.Constants[j].Name })
 
-	// INV-45: collect constructors — top-level functions whose return types
+	// INV-49: collect constructors — top-level functions whose return types
 	// include at least one type declared in this file.
 	typeNames := make(map[string]bool)
 	for _, decl := range file.Decls {
@@ -491,7 +491,7 @@ func typeKind(expr ast.Expr) string {
 }
 
 // extractStructFields collects exported fields from an ast.StructType in
-// declaration order (INV-46). Embedded types use their base type name as the
+// declaration order (INV-48). Embedded types use their base type name as the
 // field name. Unexported fields are skipped.
 func extractStructFields(st *ast.StructType) []FieldDecl {
 	var fields []FieldDecl
@@ -830,7 +830,7 @@ func extractSignals(meta PackageMeta, calls []Call, file *ast.File) Signals {
 		})
 	}
 
-	// yaml_io: imports a yaml library (path contains "yaml") or calls yaml.* (INV-47).
+	// yaml_io: imports a yaml library (path contains "yaml") or calls yaml.* (INV-49).
 	for path := range importSet {
 		if strings.Contains(path, "yaml") {
 			sig.YAMLio = true
@@ -846,7 +846,7 @@ func extractSignals(meta PackageMeta, calls []Call, file *ast.File) Signals {
 		}
 	}
 
-	// json_io: encoding/json import or calls json.* (INV-47).
+	// json_io: encoding/json import or calls json.* (INV-49).
 	if importSet["encoding/json"] {
 		sig.JSONio = true
 	}
@@ -901,7 +901,7 @@ func walkAndGenerate(root string) (written int, errs []error) {
 			if name == "vendor" || name == "testdata" || name == "examples" || name == "docs" || strings.HasPrefix(name, ".") {
 				return filepath.SkipDir
 			}
-			// Skip directories denied by settings (INV-37).
+			// Skip directories denied by settings (INV-39).
 			if settings.IsDenied(rel) {
 				return filepath.SkipDir
 			}
@@ -914,7 +914,7 @@ func walkAndGenerate(root string) (written int, errs []error) {
 		if strings.HasSuffix(name, "_test.go") {
 			return nil
 		}
-		// Skip files denied by settings (INV-37).
+		// Skip files denied by settings (INV-39).
 		if settings.IsDenied(rel) {
 			return nil
 		}

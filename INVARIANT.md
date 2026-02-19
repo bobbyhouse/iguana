@@ -1,20 +1,20 @@
-# Evidence Bundle v2 — Invariants
+# iguana — Invariants
 
-These invariants must hold before and after every change to the v2 implementation.
+These invariants must hold before and after every change to the implementation.
 
 ## Integrity Invariants
 
 1. **SHA256 correctness**: The `file.sha256` field must always equal
    `hex(sha256(os.ReadFile(file.path)))` at the moment of bundle creation.
 
-2. **Staleness detection**: `validateEvidenceBundleV2` must return an error
+2. **Staleness detection**: `validateEvidenceBundle` must return an error
    whenever the current file hash differs from `bundle.File.SHA256`.
 
-3. **Version constant**: `EvidenceBundleV2.Version` is always `2`.
+3. **Version constant**: `EvidenceBundle.Version` is always `2`.
 
 ## Determinism Invariants
 
-4. **Idempotency**: Running `createEvidenceBundleV2(filePath)` twice on the
+4. **Idempotency**: Running `createEvidenceBundle(filePath)` twice on the
    same unmodified file must produce byte-for-byte identical YAML output.
 
 5. **No position data**: The YAML output must never contain line numbers,
@@ -65,12 +65,12 @@ These invariants must hold before and after every change to the v2 implementatio
 
 ## Implementation Separation Invariants
 
-20. **Generation is pure**: `createEvidenceBundleV2` does not write any files.
+20. **Generation is pure**: `createEvidenceBundle` does not write any files.
 
-21. **Serialization is isolated**: `writeEvidenceBundleV2` only marshals and
+21. **Serialization is isolated**: `writeEvidenceBundle` only marshals and
     writes — it does not re-analyze the source file.
 
-22. **Validation is read-only**: `validateEvidenceBundleV2` only reads the
+22. **Validation is read-only**: `validateEvidenceBundle` only reads the
     source file to recompute the hash — it does not modify anything.
 
 ## Directory Walk Invariants
@@ -80,7 +80,8 @@ These invariants must hold before and after every change to the v2 implementatio
 
 24. **Skipped directories**: `vendor/`, `testdata/`, `examples/`, `docs/`, and
     directories whose name starts with `.` are skipped entirely during directory
-    walking. Test files (`*_test.go`) are also skipped.
+    walking. Test files (`*_test.go`) are also skipped. Settings deny rules
+    (INV-39) may skip additional paths.
 
 25. **Deterministic walk order**: Directories and files within each directory
     are processed in sorted (lexicographic) order.
@@ -138,19 +139,56 @@ These invariants must hold before and after every change to the v2 implementatio
     in the `commands` slice. The dispatch loop, help listing, and `help <cmd>`
     all derive from the same slice — never hardcoded names.
 
+## Settings Invariants
+
+39. **Settings file location**: The settings file is always read from
+    `.iguana/settings.yaml` relative to the analysis root. Absence of the file
+    is not an error — `LoadSettings` returns nil in that case.
+
+40. **Settings deny list**: Files and directories matching any deny rule are
+    skipped during `walkAndGenerate`. Deny rules may be bare globs
+    (`baml_client/**`) or wrapped in `Read(...)` for compatibility with Claude
+    Code's permission syntax. A `prefix/**` pattern skips the prefix directory
+    itself and all paths beneath it.
+
+41. **Settings are read-only during analysis**: `LoadSettings` never modifies
+    any file. Settings only affect which files are walked, never the output
+    format or bundle schema.
+
+## Obsidian Vault Invariants
+
+42. **Vault directory structure**: `GenerateObsidianVault` always creates
+    subdirectories `packages/`, `state-domains/`, `trust-zones/`, and
+    `concurrency-domains/` within `outputDir`, even when those sections are
+    empty in the model.
+
+43. **Wiki link format**: All cross-references between notes use
+    `[[path/to/note|display text]]` with no `.md` extension in the path
+    component. Note paths are relative to `outputDir`.
+
+44. **Vault idempotency**: Running `GenerateObsidianVault` twice on the same
+    model with the same `outputDir` produces byte-identical files on both runs.
+
+45. **Filename sanitization**: Note filenames are derived from identifiers by
+    replacing `/` and `.` with `-`, collapsing consecutive `-` to one, and
+    trimming leading/trailing `-`.
+
+46. **Vault is derived**: The vault is generated from `system_model.yaml`; notes
+    are overwritten on each re-generation and must never be manually edited.
+
 ## Evidence Enrichment Invariants
 
-45. **Constructors are functions returning package-local types**: `symbols.constructors`
+47. **Constructors are functions returning package-local types**: `symbols.constructors`
     lists every top-level function (not method) whose return types include at least
     one type declared in the same file. Sorted lexicographically. Absent (omitempty)
     when empty.
 
-46. **Struct fields captured**: For struct TypeDecls, `fields` contains one entry per
+48. **Struct fields captured**: For struct TypeDecls, `fields` contains one entry per
     exported field in declaration order. Embedded exported types appear using their
     base type name as the field name. Non-struct kinds have no `fields` entry
     (omitempty). Unexported fields are never included.
 
-47. **Serialization format signals**: `signals.yaml_io` is true when the file imports
+49. **Serialization format signals**: `signals.yaml_io` is true when the file imports
     a path containing "yaml" (e.g. `gopkg.in/yaml.v3`) or calls a `yaml.*` target.
     `signals.json_io` is true when the file imports `encoding/json` or calls a
     `json.*` target. Both are purely static (INV-18).

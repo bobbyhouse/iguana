@@ -7,7 +7,7 @@ package main
 // written as bare globs ("baml_client/**") or wrapped in a Read() verb
 // ("Read(./baml_client/**)") for familiarity.
 //
-// See INVARIANT.md INV-37.
+// See INVARIANT.md INV-39.
 
 import (
 	"fmt"
