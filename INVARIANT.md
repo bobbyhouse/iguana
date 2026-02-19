@@ -109,3 +109,31 @@ These invariants must hold before and after every change to the v2 implementatio
 31. **bundle_set_sha256 derivation**: `inputs.bundle_set_sha256` is a SHA256
     hash derived from all loaded bundle paths and hashes, sorted and joined by
     newline. It changes whenever any bundle is added, removed, or modified.
+
+## CLI Dispatch Invariants
+
+32. **Known subcommand dispatch**: When `os.Args[1]` exactly matches a registered
+    command name, the command's `run` function is called with the remaining args
+    (`os.Args[2:]`). No other handler is tried.
+
+33. **Help flags**: `iguana`, `iguana --help`, and `iguana -h` all produce the
+    same overall usage listing. `iguana help <cmd>` prints the long description
+    for that command.
+
+34. **Unknown subcommand error**: When `os.Args[1]` is not a known command name
+    AND does not exist as a file/directory on disk, the process exits with a
+    non-zero status and a message suggesting `iguana help`.
+
+35. **Backward compat — file/dir mode**: When `os.Args[1]` is not a known
+    subcommand name but names an existing file or directory, the existing
+    file/directory behavior is preserved (no behavior change).
+
+36. **Per-command usage on bad args**: When a subcommand receives wrong arguments,
+    it prints its own `usage` line and exits non-zero. It does not panic.
+
+37. **No-args is not an error path for help**: `iguana` with no args prints the
+    help listing to stdout and exits 0 (not an error).
+
+38. **Commands slice is the single source of truth**: All registered commands are
+    in the `commands` slice. The dispatch loop, help listing, and `help <cmd>`
+    all derive from the same slice — never hardcoded names.
