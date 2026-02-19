@@ -792,20 +792,33 @@ func TestSHA256MatchesFile(t *testing.T) {
 
 // TestWriteAndValidateRoundTrip verifies the write → validate cycle (INV-20..22).
 func TestWriteAndValidateRoundTrip(t *testing.T) {
-	b, err := CreateEvidenceBundle("generate.go")
+	// Use a temp dir so WriteEvidenceBundle never touches the committed evidence yaml.
+	tmpDir := t.TempDir()
+	src, err := os.ReadFile("generate.go")
+	if err != nil {
+		t.Fatalf("read generate.go: %v", err)
+	}
+	tmpFile := filepath.Join(tmpDir, "generate.go")
+	if err := os.WriteFile(tmpFile, src, 0o644); err != nil {
+		t.Fatalf("write temp: %v", err)
+	}
+
+	b, err := CreateEvidenceBundle(tmpFile)
 	if err != nil {
 		t.Fatalf("createEvidenceBundle: %v", err)
 	}
 
 	// INV-20: createEvidenceBundle must not have written a file itself
-	outputPath := filepath.FromSlash(b.File.Path + ".evidence.yaml")
-	_ = os.Remove(outputPath) // clean any leftover from prior runs
+	outputPath := tmpFile + ".evidence.yaml"
+	if _, err := os.Stat(outputPath); !os.IsNotExist(err) {
+		t.Error("createEvidenceBundle must not write a file (INV-20)")
+	}
 
 	// INV-21: writeEvidenceBundle writes the companion file
 	if _, err := WriteEvidenceBundle(b, false); err != nil {
 		t.Fatalf("writeEvidenceBundle: %v", err)
 	}
-	t.Cleanup(func() { os.Remove(outputPath) })
+	// No t.Cleanup needed — t.TempDir() removes the directory automatically.
 
 	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
 		t.Errorf("companion file not created at %q", outputPath)
@@ -1453,13 +1466,23 @@ func TestCleanEvidenceBundles(t *testing.T) {
 // returns skipped=true without overwriting if the existing bundle has the
 // same file.sha256 as the new bundle.
 func TestWriteEvidenceBundle_SkipsIfUpToDate(t *testing.T) {
-	b, err := CreateEvidenceBundle("generate.go")
+	// Use a temp dir so WriteEvidenceBundle never touches the committed evidence yaml.
+	tmpDir := t.TempDir()
+	src, err := os.ReadFile("generate.go")
+	if err != nil {
+		t.Fatalf("read generate.go: %v", err)
+	}
+	tmpFile := filepath.Join(tmpDir, "generate.go")
+	if err := os.WriteFile(tmpFile, src, 0o644); err != nil {
+		t.Fatalf("write temp: %v", err)
+	}
+
+	b, err := CreateEvidenceBundle(tmpFile)
 	if err != nil {
 		t.Fatalf("CreateEvidenceBundle: %v", err)
 	}
-	outputPath := filepath.FromSlash(b.File.Path + ".evidence.yaml")
-	_ = os.Remove(outputPath)
-	t.Cleanup(func() { os.Remove(outputPath) })
+	outputPath := tmpFile + ".evidence.yaml"
+	// No t.Cleanup needed — t.TempDir() removes the directory automatically.
 
 	// First write — must not be skipped.
 	skipped, err := WriteEvidenceBundle(b, false)
@@ -1498,13 +1521,23 @@ func TestWriteEvidenceBundle_SkipsIfUpToDate(t *testing.T) {
 // TestWriteEvidenceBundle_ForceOverwrites verifies that --force bypasses the
 // skip check and always writes.
 func TestWriteEvidenceBundle_ForceOverwrites(t *testing.T) {
-	b, err := CreateEvidenceBundle("generate.go")
+	// Use a temp dir so WriteEvidenceBundle never touches the committed evidence yaml.
+	tmpDir := t.TempDir()
+	src, err := os.ReadFile("generate.go")
+	if err != nil {
+		t.Fatalf("read generate.go: %v", err)
+	}
+	tmpFile := filepath.Join(tmpDir, "generate.go")
+	if err := os.WriteFile(tmpFile, src, 0o644); err != nil {
+		t.Fatalf("write temp: %v", err)
+	}
+
+	b, err := CreateEvidenceBundle(tmpFile)
 	if err != nil {
 		t.Fatalf("CreateEvidenceBundle: %v", err)
 	}
-	outputPath := filepath.FromSlash(b.File.Path + ".evidence.yaml")
-	_ = os.Remove(outputPath)
-	t.Cleanup(func() { os.Remove(outputPath) })
+	outputPath := tmpFile + ".evidence.yaml"
+	// No t.Cleanup needed — t.TempDir() removes the directory automatically.
 
 	// First write.
 	if _, err := WriteEvidenceBundle(b, false); err != nil {
