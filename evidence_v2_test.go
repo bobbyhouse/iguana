@@ -834,6 +834,146 @@ func TestValidateStale(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
+// Integration tests — directory walking (INV-23..26)
+// --------------------------------------------------------------------------
+
+// TestWalkAndGenerate_Basic creates a temp dir with two .go files, runs
+// walkAndGenerate, and verifies both companion files are created with
+// root-relative paths (INV-23, INV-25).
+func TestWalkAndGenerate_Basic(t *testing.T) {
+	root := t.TempDir()
+
+	src1 := "package main\nfunc Hello() {}\n"
+	src2 := "package main\nfunc World() {}\n"
+	file1 := filepath.Join(root, "hello.go")
+	file2 := filepath.Join(root, "world.go")
+
+	if err := os.WriteFile(file1, []byte(src1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file2, []byte(src2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	written, errs := walkAndGenerate(root)
+	if len(errs) != 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	if written != 2 {
+		t.Errorf("written = %d, want 2", written)
+	}
+
+	// Both companion files must exist.
+	for _, f := range []string{file1, file2} {
+		companion := f + ".evidence.yaml"
+		if _, err := os.Stat(companion); os.IsNotExist(err) {
+			t.Errorf("companion file not created: %s", companion)
+		}
+		t.Cleanup(func() { os.Remove(companion) })
+	}
+
+	// Read the bundle and check path is root-relative (INV-23).
+	data, err := os.ReadFile(file1 + ".evidence.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bundle EvidenceBundleV2
+	if err := yaml.Unmarshal(data, &bundle); err != nil {
+		t.Fatal(err)
+	}
+	if strings.HasPrefix(bundle.File.Path, root) {
+		t.Errorf("file.path should be relative, got absolute: %q", bundle.File.Path)
+	}
+}
+
+// TestWalkAndGenerate_SkipsVendor verifies that a vendor/ subdirectory is not
+// processed during directory walking (INV-24).
+func TestWalkAndGenerate_SkipsVendor(t *testing.T) {
+	root := t.TempDir()
+
+	src := "package main\nfunc Main() {}\n"
+	mainFile := filepath.Join(root, "main.go")
+	if err := os.WriteFile(mainFile, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(mainFile + ".evidence.yaml") })
+
+	// Create a vendor subdir with a .go file.
+	vendorDir := filepath.Join(root, "vendor", "pkg")
+	if err := os.MkdirAll(vendorDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	vendorFile := filepath.Join(vendorDir, "vendored.go")
+	if err := os.WriteFile(vendorFile, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	written, errs := walkAndGenerate(root)
+	if len(errs) != 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	// Only the root main.go should have been processed.
+	if written != 1 {
+		t.Errorf("written = %d, want 1 (vendor/ should be skipped)", written)
+	}
+	// Vendor companion must not have been created.
+	vendorCompanion := vendorFile + ".evidence.yaml"
+	if _, err := os.Stat(vendorCompanion); !os.IsNotExist(err) {
+		t.Errorf("vendor companion file should not exist: %s", vendorCompanion)
+		os.Remove(vendorCompanion)
+	}
+}
+
+// TestWalkAndGenerate_RelativePaths verifies that bundle.File.Path is relative
+// to the provided root and uses forward slashes (INV-23).
+func TestWalkAndGenerate_RelativePaths(t *testing.T) {
+	root := t.TempDir()
+
+	// Create a file in a subdirectory.
+	subDir := filepath.Join(root, "sub")
+	if err := os.Mkdir(subDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := "package sub\nfunc Sub() {}\n"
+	subFile := filepath.Join(subDir, "sub.go")
+	if err := os.WriteFile(subFile, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(subFile + ".evidence.yaml") })
+
+	written, errs := walkAndGenerate(root)
+	if len(errs) != 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	if written != 1 {
+		t.Errorf("written = %d, want 1", written)
+	}
+
+	data, err := os.ReadFile(subFile + ".evidence.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bundle EvidenceBundleV2
+	if err := yaml.Unmarshal(data, &bundle); err != nil {
+		t.Fatal(err)
+	}
+
+	// Path must be root-relative with forward slashes (INV-23).
+	wantPath := "sub/sub.go"
+	if bundle.File.Path != wantPath {
+		t.Errorf("file.path = %q, want %q", bundle.File.Path, wantPath)
+	}
+	// Must not contain the absolute root prefix.
+	if strings.Contains(bundle.File.Path, root) {
+		t.Errorf("file.path must not contain absolute root: %q", bundle.File.Path)
+	}
+	// Must use forward slashes (INV-13).
+	if strings.Contains(bundle.File.Path, "\\") {
+		t.Errorf("file.path contains backslash: %q", bundle.File.Path)
+	}
+}
+
+// --------------------------------------------------------------------------
 // Fuzz tests
 // --------------------------------------------------------------------------
 

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -57,7 +58,39 @@ func main() {
 		os.Exit(1)
 	}
 
+	// system-model subcommand: aggregate evidence bundles into a system model.
+	if len(os.Args) >= 3 && os.Args[1] == "system-model" {
+		root := os.Args[2]
+		outputPath := filepath.Join(root, "system_model.yaml")
+		if len(os.Args) >= 4 {
+			outputPath = os.Args[3]
+		}
+		model, err := GenerateSystemModel(context.Background(), root)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := WriteSystemModel(model, outputPath); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("wrote %s (%d state domains, %d effects)\n",
+			outputPath, len(model.StateDomains), len(model.Effects))
+		return
+	}
+
 	filePath := os.Args[1]
+
+	// Directory mode: walk all .go files under the root.
+	if info, err := os.Stat(filePath); err == nil && info.IsDir() {
+		written, errs := walkAndGenerate(filePath)
+		for _, e := range errs {
+			fmt.Fprintf(os.Stderr, "error: %v\n", e)
+		}
+		fmt.Printf("wrote %d bundles, %d errors\n", written, len(errs))
+		if len(errs) > 0 {
+			os.Exit(1)
+		}
+		return
+	}
 
 	if strings.HasSuffix(filePath, ".go") {
 		// v2: semantic analysis — writes companion .evidence.yaml file.

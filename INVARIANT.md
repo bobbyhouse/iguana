@@ -72,3 +72,39 @@ These invariants must hold before and after every change to the v2 implementatio
 
 22. **Validation is read-only**: `validateEvidenceBundleV2` only reads the
     source file to recompute the hash — it does not modify anything.
+
+## Directory Walk Invariants
+
+23. **Relative paths in directory mode**: When `walkAndGenerate(root)` is used,
+    `file.path` is relative to the provided root, using forward slashes.
+
+24. **Skipped directories**: `vendor/`, `testdata/`, and directories whose name
+    starts with `.` are skipped entirely during directory walking.
+
+25. **Deterministic walk order**: Directories and files within each directory
+    are processed in sorted (lexicographic) order.
+
+26. **One package load per directory**: `loadPackageForDir` is called once per
+    unique directory, not once per `.go` file.
+
+## System Model Invariants
+
+27. **system_model.yaml is derived**: `system_model.yaml` is always generated
+    from evidence bundles via `GenerateSystemModel`; it must never be manually
+    edited. It is a derived artifact.
+
+28. **System model arrays are sorted**: All arrays in the system model output
+    are sorted alphabetically by `id` or primary key (filename, package name,
+    or question text).
+
+29. **Inferred elements have evidence_refs**: Every inferred element
+    (`state_domains`, `trust_zones`) must have at least one entry in its
+    `evidence_refs` list, tracing back to the bundles that justified it.
+
+30. **Evidence ref format**: Evidence refs follow exactly:
+    `bundle:<path>@v<version>[#symbol:<name>|#signal:<name>]`
+    — no other formats are valid.
+
+31. **bundle_set_sha256 derivation**: `inputs.bundle_set_sha256` is a SHA256
+    hash derived from all loaded bundle paths and hashes, sorted and joined by
+    newline. It changes whenever any bundle is added, removed, or modified.

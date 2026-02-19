@@ -23,6 +23,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -141,7 +142,13 @@ func createEvidenceBundleV2(filePath string) (*EvidenceBundleV2, error) {
 		typesPkg = nil
 	}
 
-	// Step 3 — semantic extraction.
+	return buildBundle(normalizedPath, hash, file, typesInfo, typesPkg), nil
+}
+
+// buildBundle assembles an EvidenceBundleV2 from pre-loaded AST and type data.
+// normalizedPath is already slash-normalized; hash is the hex-encoded SHA256.
+// typesInfo and typesPkg may be nil (AST-only fallback).
+func buildBundle(normalizedPath, hash string, file *ast.File, typesInfo *types.Info, typesPkg *types.Package) *EvidenceBundleV2 {
 	qualifier := makeQualifier(typesPkg)
 	pkgMeta := extractPackageMeta(file)
 	syms := extractSymbols(file, typesInfo, typesPkg, qualifier)
@@ -158,7 +165,7 @@ func createEvidenceBundleV2(filePath string) (*EvidenceBundleV2, error) {
 		Symbols: syms,
 		Calls:   calls,
 		Signals: sigs,
-	}, nil
+	}
 }
 
 // writeEvidenceBundleV2 marshals the bundle to YAML and writes it to the
@@ -239,6 +246,34 @@ func loadTypeInfoForFile(filePath string) (*ast.File, *types.Info, *types.Packag
 		}
 	}
 	return nil, nil, nil, fmt.Errorf("file %s not found in package syntax", absPath)
+}
+
+// loadPackageForDir loads the Go package in dir using golang.org/x/tools/go/packages.
+// Returns the *packages.Package and *token.FileSet so all files in the package
+// can be found in pkg.Syntax without re-loading (INV-26).
+// Returns an error if loading fails or no type info is available.
+func loadPackageForDir(dir string) (*packages.Package, *token.FileSet, error) {
+	fset := token.NewFileSet()
+	cfg := &packages.Config{
+		Mode: packages.NeedSyntax |
+			packages.NeedTypes |
+			packages.NeedTypesInfo |
+			packages.NeedImports,
+		Dir:  dir,
+		Fset: fset,
+	}
+	pkgs, err := packages.Load(cfg, ".")
+	if err != nil {
+		return nil, nil, fmt.Errorf("packages.Load: %w", err)
+	}
+	if len(pkgs) == 0 {
+		return nil, nil, fmt.Errorf("no packages found")
+	}
+	pkg := pkgs[0]
+	if pkg.TypesInfo == nil || pkg.Types == nil {
+		return nil, nil, fmt.Errorf("no type info (package may have errors)")
+	}
+	return pkg, fset, nil
 }
 
 // makeQualifier returns a types.Qualifier that prints external package names
@@ -707,4 +742,132 @@ func extractSignals(meta PackageMeta, calls []Call, file *ast.File) Signals {
 	}
 
 	return sig
+}
+
+// ---------------------------------------------------------------------------
+// Directory Walking
+// ---------------------------------------------------------------------------
+
+// walkAndGenerate walks root recursively, generating a v2 evidence bundle for
+// every .go file found. Directories named vendor, testdata, or starting with
+// "." are skipped entirely (INV-24). Directories and files are processed in
+// sorted order (INV-25). Each directory's package is loaded once (INV-26).
+//
+// Returns the number of bundles written and any errors encountered.
+// Errors are accumulated — processing continues even if individual files fail.
+func walkAndGenerate(root string) (written int, errs []error) {
+	// Collect .go files grouped by directory.
+	filesByDir := make(map[string][]string)
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		name := d.Name()
+		if d.IsDir() {
+			// Always descend into the root itself.
+			if path == root {
+				return nil
+			}
+			// Skip vendor, testdata, and hidden directories (INV-24).
+			if name == "vendor" || name == "testdata" || strings.HasPrefix(name, ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(name) != ".go" {
+			return nil
+		}
+		dir := filepath.Dir(path)
+		filesByDir[dir] = append(filesByDir[dir], path)
+		return nil
+	})
+	if err != nil {
+		errs = append(errs, fmt.Errorf("walk %s: %w", root, err))
+		return
+	}
+
+	// Sort directories for deterministic processing (INV-25).
+	dirs := make([]string, 0, len(filesByDir))
+	for dir := range filesByDir {
+		dirs = append(dirs, dir)
+	}
+	sort.Strings(dirs)
+
+	for _, dir := range dirs {
+		files := filesByDir[dir]
+		sort.Strings(files) // sort files within each dir (INV-25)
+
+		// Load the package once per directory (INV-26).
+		// pkg may be nil if loading fails; buildBundleForFile falls back to go/parser.
+		pkg, fset, _ := loadPackageForDir(dir)
+
+		for _, absPath := range files {
+			relPath, err := filepath.Rel(root, absPath)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("rel path %s: %w", absPath, err))
+				continue
+			}
+			relPath = filepath.ToSlash(relPath)
+
+			bundle, err := buildBundleForFile(absPath, relPath, pkg, fset)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("build bundle %s: %w", relPath, err))
+				continue
+			}
+
+			if err := writeBundleAt(bundle, absPath); err != nil {
+				errs = append(errs, fmt.Errorf("write bundle %s: %w", relPath, err))
+				continue
+			}
+			written++
+		}
+	}
+	return
+}
+
+// buildBundleForFile creates an EvidenceBundleV2 for a single file.
+// It uses the pre-loaded pkg/fset when the file can be found in pkg.Syntax;
+// otherwise it falls back to go/parser with no type information.
+// absPath is the absolute filesystem path; relPath is the root-relative
+// forward-slash path stored as file.path in the bundle (INV-23).
+func buildBundleForFile(absPath, relPath string, pkg *packages.Package, fset *token.FileSet) (*EvidenceBundleV2, error) {
+	fileBytes, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, fmt.Errorf("read file: %w", err)
+	}
+	sum := sha256.Sum256(fileBytes)
+	hash := hex.EncodeToString(sum[:])
+
+	// Try to find the file in the pre-loaded package syntax.
+	if pkg != nil && fset != nil && pkg.TypesInfo != nil && pkg.Types != nil {
+		for _, f := range pkg.Syntax {
+			pos := fset.Position(f.Pos())
+			if pos.Filename == absPath {
+				return buildBundle(relPath, hash, f, pkg.TypesInfo, pkg.Types), nil
+			}
+		}
+	}
+
+	// Fall back to go/parser (no type info).
+	fileFset := token.NewFileSet()
+	file, err := parser.ParseFile(fileFset, absPath, nil, parser.ParseComments)
+	if err != nil {
+		return nil, fmt.Errorf("parse: %w", err)
+	}
+	return buildBundle(relPath, hash, file, nil, nil), nil
+}
+
+// writeBundleAt marshals bundle to YAML and writes it to absFilePath+".evidence.yaml".
+// The companion file is written using the absolute path so it lands next to the
+// source regardless of the caller's working directory (INV-14).
+func writeBundleAt(bundle *EvidenceBundleV2, absFilePath string) error {
+	data, err := yaml.Marshal(bundle)
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
+	}
+	outputPath := absFilePath + ".evidence.yaml"
+	if err := os.WriteFile(outputPath, data, 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", outputPath, err)
+	}
+	return nil
 }
