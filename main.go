@@ -156,11 +156,11 @@ func legacyFilePath(filePath string) error {
 
 	if strings.HasSuffix(filePath, ".go") {
 		// v2: semantic analysis — writes companion .evidence.yaml file.
-		bundle, err := createEvidenceBundleV2(filePath)
+		bundle, err := createEvidenceBundle(filePath)
 		if err != nil {
 			return err
 		}
-		if err := writeEvidenceBundleV2(bundle); err != nil {
+		if err := writeEvidenceBundle(bundle); err != nil {
 			return err
 		}
 		fmt.Printf("wrote %s.evidence.yaml\n", filePath)
