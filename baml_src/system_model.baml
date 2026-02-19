@@ -28,7 +28,7 @@ class StateDomainSpec {
   representations string[]  // 1-3 related type/interface names beyond the aggregate
   primary_mutators string[] // deduped function names that write/modify this domain
   primary_readers string[]  // deduped function names that read this domain
-  @description("0.0-1.0: 1.0=direct fact, 0.8=strong, 0.6=probable, <0.4=open_question")
+  @description("0.0-1.0: 1.0=direct fact, 0.8=strong, 0.7=min for separate domain, <0.7=merge or open_question")
   confidence float
 }
 
@@ -60,11 +60,15 @@ function InferSystemModel(packages: PackageSummary[]) -> SystemModelInference {
 
   For STATE DOMAINS: cluster related types into cohesive logical domains (e.g.
   "catalog_management", "session_state"). For each domain:
-  - Choose ONE primary aggregate concept name (e.g. "Catalog", "Session")
+  - Choose ONE aggregate: the root type that is independently constructed,
+    persisted, or passed as a handle (e.g. "Order", "Session", "EvidenceBundle").
+    Component types that only exist as fields within another type belong to their
+    parent's domain — they are representations, not aggregates.
   - List 1-3 closely related representation types (not the aggregate itself)
   - List primary_mutators: deduplicated functions that write/modify this domain
   - List primary_readers: deduplicated functions that read this domain
-  - Confidence < 0.4 → move to open_questions instead
+  - Confidence < 0.7 → merge with a related domain or move to open_questions
+  - Prefer 2-4 well-defined domains over many weak ones
 
   For TRUST ZONES: group packages by security boundary. "internal" = core
   business logic. "external" = packages making outbound network calls.
@@ -73,7 +77,8 @@ function InferSystemModel(packages: PackageSummary[]) -> SystemModelInference {
   schema definitions, unclear data flows, ambiguous ownership).
 
   Rules:
-  - Aim for 1-3 aggregates per domain, not flat lists of 15 symbols
+  - Aim for 1-3 representations per domain, not flat lists of 15 symbols
+  - When two candidate domains share unclear boundaries, merge them
   - Only infer what the evidence supports
   - Sort all arrays alphabetically
   - All type names and function names must exist in the provided summaries

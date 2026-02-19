@@ -756,13 +756,24 @@ func extractSignals(meta PackageMeta, calls []Call, file *ast.File) Signals {
 // Returns the number of bundles written and any errors encountered.
 // Errors are accumulated — processing continues even if individual files fail.
 func walkAndGenerate(root string) (written int, errs []error) {
+	settings, err := LoadSettings(root)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("load settings: %w", err))
+		return
+	}
+
 	// Collect .go files grouped by directory.
 	filesByDir := make(map[string][]string)
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		name := d.Name()
+
+		// Compute the forward-slash relative path for settings checks.
+		rel, _ := filepath.Rel(root, path)
+		rel = filepath.ToSlash(rel)
+
 		if d.IsDir() {
 			// Always descend into the root itself.
 			if path == root {
@@ -772,6 +783,10 @@ func walkAndGenerate(root string) (written int, errs []error) {
 			if name == "vendor" || name == "testdata" || name == "examples" || name == "docs" || strings.HasPrefix(name, ".") {
 				return filepath.SkipDir
 			}
+			// Skip directories denied by settings (INV-37).
+			if settings.IsDenied(rel) {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if filepath.Ext(name) != ".go" {
@@ -779,6 +794,10 @@ func walkAndGenerate(root string) (written int, errs []error) {
 		}
 		// Skip test files (INV-24).
 		if strings.HasSuffix(name, "_test.go") {
+			return nil
+		}
+		// Skip files denied by settings (INV-37).
+		if settings.IsDenied(rel) {
 			return nil
 		}
 		dir := filepath.Dir(path)

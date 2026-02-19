@@ -67,6 +67,7 @@ type Inventory struct {
 type PackageEntry struct {
 	Name         string   `yaml:"name"`
 	Files        []string `yaml:"files,omitempty"`
+	Imports      []string `yaml:"imports,omitempty"` // internal package dependencies (by name)
 	EvidenceRefs []string `yaml:"evidence_refs,omitempty"`
 }
 
@@ -217,9 +218,14 @@ func evidenceRef(path string, version int, fragment string) string {
 // loadEvidenceBundles walks root for *.evidence.yaml files, unmarshals each,
 // and returns them sorted by File.Path (INV-31 requires deterministic hash).
 func loadEvidenceBundles(root string) ([]*EvidenceBundleV2, error) {
+	settings, err := LoadSettings(root)
+	if err != nil {
+		return nil, fmt.Errorf("load settings: %w", err)
+	}
+
 	var bundles []*EvidenceBundleV2
 
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -228,9 +234,27 @@ func loadEvidenceBundles(root string) ([]*EvidenceBundleV2, error) {
 			if path != root && (name == "vendor" || name == "testdata" || name == "examples" || name == "docs" || strings.HasPrefix(name, ".")) {
 				return filepath.SkipDir
 			}
+			// Skip directories denied by settings (INV-37).
+			if path != root {
+				rel, _ := filepath.Rel(root, path)
+				if settings.IsDenied(filepath.ToSlash(rel)) {
+					return filepath.SkipDir
+				}
+			}
 			return nil
 		}
 		if !strings.HasSuffix(d.Name(), ".evidence.yaml") {
+			return nil
+		}
+		// Skip test evidence bundles (INV-24: test files are not analyzed).
+		if strings.HasSuffix(d.Name(), "_test.go.evidence.yaml") {
+			return nil
+		}
+		// Skip evidence bundles whose source file is denied by settings (INV-37).
+		// Bundle File.Path is relative with forward slashes (INV-23).
+		rel, _ := filepath.Rel(root, path)
+		rel = filepath.ToSlash(rel)
+		if settings.IsDenied(rel) {
 			return nil
 		}
 		data, err := os.ReadFile(path)
@@ -309,6 +333,30 @@ func buildInventory(bundles []*EvidenceBundleV2) Inventory {
 	}
 	sort.Strings(pkgNames)
 
+	// Build set of known package names for import matching.
+	pkgNameSet := make(map[string]bool, len(pkgNames))
+	for _, name := range pkgNames {
+		pkgNameSet[name] = true
+	}
+
+	// Collect internal imports per package: for each import path, the last
+	// path segment is matched against known package names. This identifies
+	// intra-codebase dependencies (e.g. "iguana/store" → "store").
+	pkgImports := make(map[string]map[string]bool)
+	for _, bnd := range bundles {
+		name := bnd.Package.Name
+		for _, imp := range bnd.Package.Imports {
+			parts := strings.Split(imp.Path, "/")
+			dep := parts[len(parts)-1]
+			if pkgNameSet[dep] && dep != name {
+				if pkgImports[name] == nil {
+					pkgImports[name] = make(map[string]bool)
+				}
+				pkgImports[name][dep] = true
+			}
+		}
+	}
+
 	var entries []PackageEntry
 	var entrypoints []Entrypoint
 
@@ -318,9 +366,16 @@ func buildInventory(bundles []*EvidenceBundleV2) Inventory {
 		sort.Strings(files)
 		sort.Strings(refs)
 
+		var imports []string
+		for dep := range pkgImports[name] {
+			imports = append(imports, dep)
+		}
+		sort.Strings(imports)
+
 		entries = append(entries, PackageEntry{
 			Name:         name,
 			Files:        files,
+			Imports:      imports,
 			EvidenceRefs: refs,
 		})
 
@@ -551,15 +606,15 @@ func buildPackageSummaries(bundles []*EvidenceBundleV2) []types.PackageSummary {
 	}
 	sort.Strings(pkgNames)
 
-	// top10 returns a sorted, capped slice from a set.
-	top10 := func(set map[string]bool) []string {
+	// topN returns a sorted, capped slice from a set.
+	topN := func(set map[string]bool, n int) []string {
 		items := make([]string, 0, len(set))
 		for k := range set {
 			items = append(items, k)
 		}
 		sort.Strings(items)
-		if len(items) > 10 {
-			items = items[:10]
+		if len(items) > n {
+			items = items[:n]
 		}
 		return items
 	}
@@ -580,10 +635,10 @@ func buildPackageSummaries(bundles []*EvidenceBundleV2) []types.PackageSummary {
 		summaries = append(summaries, types.PackageSummary{
 			Name:      name,
 			Files:     files,
-			Types:     top10(a.types),
-			Functions: top10(a.functions),
+			Types:     topN(a.types, 30),    // higher cap: types are the aggregate vocabulary
+			Functions: topN(a.functions, 10),
 			Signals:   a.signals,
-			Imports:   top10(a.imports),
+			Imports:   topN(a.imports, 10),
 		})
 	}
 
@@ -769,6 +824,19 @@ func GenerateSystemModel(ctx context.Context, root string) (*SystemModel, error)
 		TrustZones:         trustZones,
 		OpenQuestions:      openQuestions,
 	}, nil
+}
+
+// ReadSystemModel reads and unmarshals a system_model.yaml file.
+func ReadSystemModel(path string) (*SystemModel, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	var model SystemModel
+	if err := yaml.Unmarshal(data, &model); err != nil {
+		return nil, fmt.Errorf("unmarshal %s: %w", path, err)
+	}
+	return &model, nil
 }
 
 // WriteSystemModel marshals model to YAML and writes it to outputPath.

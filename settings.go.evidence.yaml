@@ -1,0 +1,85 @@
+version: 2
+file:
+    path: settings.go
+    sha256: 1fa4272dd7d0faebd1e28bccae8c2b95fd0744f3ae8127d3ff7b70fc470fb44e
+package:
+    name: main
+    imports:
+        - path: fmt
+        - path: gopkg.in/yaml.v3
+        - path: os
+        - path: path/filepath
+        - path: strings
+symbols:
+    functions:
+        - name: IsDenied
+          exported: true
+          receiver: '*Settings'
+          params:
+            - string
+          returns:
+            - bool
+        - name: LoadSettings
+          exported: true
+          params:
+            - string
+          returns:
+            - '*Settings'
+            - error
+        - name: matchDenyPattern
+          exported: false
+          params:
+            - string
+            - string
+          returns:
+            - bool
+        - name: parseDenyRule
+          exported: false
+          params:
+            - string
+          returns:
+            - string
+    types:
+        - name: Permissions
+          kind: struct
+          exported: true
+        - name: Settings
+          kind: struct
+          exported: true
+calls:
+    - from: '*Settings.IsDenied'
+      to: matchDenyPattern
+    - from: '*Settings.IsDenied'
+      to: parseDenyRule
+    - from: LoadSettings
+      to: filepath.Join
+    - from: LoadSettings
+      to: fmt.Errorf
+    - from: LoadSettings
+      to: os.IsNotExist
+    - from: LoadSettings
+      to: os.ReadFile
+    - from: LoadSettings
+      to: yaml.Unmarshal
+    - from: matchDenyPattern
+      to: filepath.Match
+    - from: matchDenyPattern
+      to: strings.HasPrefix
+    - from: matchDenyPattern
+      to: strings.HasSuffix
+    - from: matchDenyPattern
+      to: strings.TrimSuffix
+    - from: parseDenyRule
+      to: len
+    - from: parseDenyRule
+      to: strings.HasPrefix
+    - from: parseDenyRule
+      to: strings.HasSuffix
+    - from: parseDenyRule
+      to: strings.TrimPrefix
+signals:
+    fs_reads: true
+    fs_writes: false
+    db_calls: false
+    net_calls: false
+    concurrency: false

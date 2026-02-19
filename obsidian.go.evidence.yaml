@@ -1,0 +1,370 @@
+version: 2
+file:
+    path: obsidian.go
+    sha256: 21b21026101bb21f3f00bbc78275385587e665314c03ebd30965f1a23fa47926
+package:
+    name: main
+    imports:
+        - path: fmt
+        - path: os
+        - path: path/filepath
+        - path: sort
+        - path: strings
+symbols:
+    functions:
+        - name: GenerateObsidianVault
+          exported: true
+          params:
+            - '*SystemModel'
+            - string
+          returns:
+            - error
+        - name: buildConcurrencyToDomains
+          exported: false
+          params:
+            - '[]ConcurrencyDomain'
+            - '[]Effect'
+          returns:
+            - map[string][]string
+        - name: buildDomainPackageEffects
+          exported: false
+          params:
+            - '[]Effect'
+            - map[string]string
+          returns:
+            - map[string][]string
+            - map[string][]string
+        - name: buildDomainToConcurrentFiles
+          exported: false
+          params:
+            - '[]ConcurrencyDomain'
+            - '[]Effect'
+          returns:
+            - map[string][]string
+        - name: buildFileToPackage
+          exported: false
+          params:
+            - '[]PackageEntry'
+          returns:
+            - map[string]string
+        - name: buildImportedBy
+          exported: false
+          params:
+            - '[]PackageEntry'
+          returns:
+            - map[string][]string
+        - name: buildPkgEffects
+          exported: false
+          params:
+            - '[]Effect'
+            - map[string]string
+          returns:
+            - map[string][]Effect
+        - name: buildPkgToDomains
+          exported: false
+          params:
+            - '[]StateDomain'
+          returns:
+            - map[string][]string
+        - name: buildPkgToZones
+          exported: false
+          params:
+            - '[]TrustZone'
+          returns:
+            - map[string][]string
+        - name: buildVaultCtx
+          exported: false
+          params:
+            - '*SystemModel'
+          returns:
+            - vaultCtx
+        - name: frontmatter
+          exported: false
+          params:
+            - string
+          returns:
+            - string
+        - name: sanitizeFilename
+          exported: false
+          params:
+            - string
+          returns:
+            - string
+        - name: writeConcurrencyDomainNote
+          exported: false
+          params:
+            - ConcurrencyDomain
+            - vaultCtx
+            - string
+          returns:
+            - error
+        - name: writeEffectsNote
+          exported: false
+          params:
+            - '[]Effect'
+            - string
+          returns:
+            - error
+        - name: writeNote
+          exported: false
+          params:
+            - string
+            - string
+          returns:
+            - error
+        - name: writeOpenQuestionsNote
+          exported: false
+          params:
+            - '[]OpenQuestion'
+            - string
+          returns:
+            - error
+        - name: writePackageNote
+          exported: false
+          params:
+            - PackageEntry
+            - vaultCtx
+            - string
+          returns:
+            - error
+        - name: writeStateDomainNote
+          exported: false
+          params:
+            - StateDomain
+            - vaultCtx
+            - string
+          returns:
+            - error
+        - name: writeTrustZoneNote
+          exported: false
+          params:
+            - TrustZone
+            - string
+          returns:
+            - error
+        - name: writeVaultIndex
+          exported: false
+          params:
+            - '*SystemModel'
+            - string
+          returns:
+            - error
+    types:
+        - name: vaultCtx
+          kind: struct
+          exported: false
+calls:
+    - from: GenerateObsidianVault
+      to: buildVaultCtx
+    - from: GenerateObsidianVault
+      to: filepath.Join
+    - from: GenerateObsidianVault
+      to: fmt.Errorf
+    - from: GenerateObsidianVault
+      to: os.MkdirAll
+    - from: GenerateObsidianVault
+      to: writeConcurrencyDomainNote
+    - from: GenerateObsidianVault
+      to: writeEffectsNote
+    - from: GenerateObsidianVault
+      to: writeOpenQuestionsNote
+    - from: GenerateObsidianVault
+      to: writePackageNote
+    - from: GenerateObsidianVault
+      to: writeStateDomainNote
+    - from: GenerateObsidianVault
+      to: writeTrustZoneNote
+    - from: GenerateObsidianVault
+      to: writeVaultIndex
+    - from: buildConcurrencyToDomains
+      to: append
+    - from: buildConcurrencyToDomains
+      to: len
+    - from: buildConcurrencyToDomains
+      to: make
+    - from: buildConcurrencyToDomains
+      to: sort.Strings
+    - from: buildDomainPackageEffects
+      to: make
+    - from: buildDomainPackageEffects
+      to: toSliceMap
+    - from: buildDomainPackageEffects.<anonymous>
+      to: append
+    - from: buildDomainPackageEffects.<anonymous>
+      to: len
+    - from: buildDomainPackageEffects.<anonymous>
+      to: make
+    - from: buildDomainPackageEffects.<anonymous>
+      to: sort.Strings
+    - from: buildDomainToConcurrentFiles
+      to: append
+    - from: buildDomainToConcurrentFiles
+      to: len
+    - from: buildDomainToConcurrentFiles
+      to: make
+    - from: buildDomainToConcurrentFiles
+      to: sort.Strings
+    - from: buildFileToPackage
+      to: make
+    - from: buildImportedBy
+      to: append
+    - from: buildImportedBy
+      to: make
+    - from: buildImportedBy
+      to: sort.Strings
+    - from: buildPkgEffects
+      to: append
+    - from: buildPkgEffects
+      to: make
+    - from: buildPkgToDomains
+      to: append
+    - from: buildPkgToDomains
+      to: make
+    - from: buildPkgToZones
+      to: append
+    - from: buildPkgToZones
+      to: make
+    - from: buildVaultCtx
+      to: buildConcurrencyToDomains
+    - from: buildVaultCtx
+      to: buildDomainPackageEffects
+    - from: buildVaultCtx
+      to: buildDomainToConcurrentFiles
+    - from: buildVaultCtx
+      to: buildFileToPackage
+    - from: buildVaultCtx
+      to: buildImportedBy
+    - from: buildVaultCtx
+      to: buildPkgEffects
+    - from: buildVaultCtx
+      to: buildPkgToDomains
+    - from: buildVaultCtx
+      to: buildPkgToZones
+    - from: sanitizeFilename
+      to: strings.Contains
+    - from: sanitizeFilename
+      to: strings.ReplaceAll
+    - from: sanitizeFilename
+      to: strings.Trim
+    - from: writeConcurrencyDomainNote
+      to: b.String
+    - from: writeConcurrencyDomainNote
+      to: b.WriteString
+    - from: writeConcurrencyDomainNote
+      to: filepath.Join
+    - from: writeConcurrencyDomainNote
+      to: fmt.Sprintf
+    - from: writeConcurrencyDomainNote
+      to: frontmatter
+    - from: writeConcurrencyDomainNote
+      to: len
+    - from: writeConcurrencyDomainNote
+      to: sanitizeFilename
+    - from: writeConcurrencyDomainNote
+      to: writeNote
+    - from: writeEffectsNote
+      to: b.String
+    - from: writeEffectsNote
+      to: b.WriteString
+    - from: writeEffectsNote
+      to: filepath.Join
+    - from: writeEffectsNote
+      to: fmt.Sprintf
+    - from: writeEffectsNote
+      to: frontmatter
+    - from: writeEffectsNote
+      to: sanitizeFilename
+    - from: writeEffectsNote
+      to: writeNote
+    - from: writeNote
+      to: filepath.Dir
+    - from: writeNote
+      to: fmt.Errorf
+    - from: writeNote
+      to: os.MkdirAll
+    - from: writeNote
+      to: os.WriteFile
+    - from: writeOpenQuestionsNote
+      to: b.String
+    - from: writeOpenQuestionsNote
+      to: b.WriteString
+    - from: writeOpenQuestionsNote
+      to: filepath.Join
+    - from: writeOpenQuestionsNote
+      to: fmt.Sprintf
+    - from: writeOpenQuestionsNote
+      to: frontmatter
+    - from: writeOpenQuestionsNote
+      to: len
+    - from: writeOpenQuestionsNote
+      to: sanitizeFilename
+    - from: writeOpenQuestionsNote
+      to: writeNote
+    - from: writePackageNote
+      to: b.String
+    - from: writePackageNote
+      to: b.WriteString
+    - from: writePackageNote
+      to: filepath.Join
+    - from: writePackageNote
+      to: fmt.Sprintf
+    - from: writePackageNote
+      to: frontmatter
+    - from: writePackageNote
+      to: len
+    - from: writePackageNote
+      to: sanitizeFilename
+    - from: writePackageNote
+      to: writeNote
+    - from: writeStateDomainNote
+      to: b.String
+    - from: writeStateDomainNote
+      to: b.WriteString
+    - from: writeStateDomainNote
+      to: filepath.Join
+    - from: writeStateDomainNote
+      to: fmt.Sprintf
+    - from: writeStateDomainNote
+      to: frontmatter
+    - from: writeStateDomainNote
+      to: len
+    - from: writeStateDomainNote
+      to: sanitizeFilename
+    - from: writeStateDomainNote
+      to: writeNote
+    - from: writeTrustZoneNote
+      to: b.String
+    - from: writeTrustZoneNote
+      to: b.WriteString
+    - from: writeTrustZoneNote
+      to: filepath.Join
+    - from: writeTrustZoneNote
+      to: fmt.Sprintf
+    - from: writeTrustZoneNote
+      to: frontmatter
+    - from: writeTrustZoneNote
+      to: len
+    - from: writeTrustZoneNote
+      to: sanitizeFilename
+    - from: writeTrustZoneNote
+      to: writeNote
+    - from: writeVaultIndex
+      to: b.String
+    - from: writeVaultIndex
+      to: b.WriteString
+    - from: writeVaultIndex
+      to: filepath.Join
+    - from: writeVaultIndex
+      to: fmt.Sprintf
+    - from: writeVaultIndex
+      to: frontmatter
+    - from: writeVaultIndex
+      to: sanitizeFilename
+    - from: writeVaultIndex
+      to: writeNote
+signals:
+    fs_reads: false
+    fs_writes: true
+    db_calls: false
+    net_calls: false
+    concurrency: false

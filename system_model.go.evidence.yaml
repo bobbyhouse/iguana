@@ -1,7 +1,7 @@
 version: 2
 file:
     path: system_model.go
-    sha256: dd1ddc92e7882bbb7f02336cda4601829706568897e236d6cebdc4b24bf08522
+    sha256: 625574335281c55fb6bd7a87f4cd067cc82516e68dd57465f96e4a0fd596110d
 package:
     name: main
     imports:
@@ -25,6 +25,13 @@ symbols:
           exported: true
           params:
             - context.Context
+            - string
+          returns:
+            - '*SystemModel'
+            - error
+        - name: ReadSystemModel
+          exported: true
+          params:
             - string
           returns:
             - '*SystemModel'
@@ -87,6 +94,12 @@ symbols:
             - string
           returns:
             - bool
+        - name: linkEffectsToDomains
+          exported: false
+          params:
+            - '[]Effect'
+            - '[]StateDomain'
+            - '[]*EvidenceBundleV2'
         - name: loadEvidenceBundles
           exported: false
           params:
@@ -164,9 +177,6 @@ symbols:
         - name: ProcessBoundary
           kind: struct
           exported: true
-        - name: Representation
-          kind: struct
-          exported: true
         - name: StateDomain
           kind: struct
           exported: true
@@ -184,7 +194,11 @@ symbols:
           exported: true
 calls:
     - from: GenerateSystemModel
-      to: baml_client.InferSystemModel
+      to: Format
+    - from: GenerateSystemModel
+      to: UTC
+    - from: GenerateSystemModel
+      to: b.InferSystemModel
     - from: GenerateSystemModel
       to: buildBoundaries
     - from: GenerateSystemModel
@@ -202,6 +216,8 @@ calls:
     - from: GenerateSystemModel
       to: len
     - from: GenerateSystemModel
+      to: linkEffectsToDomains
+    - from: GenerateSystemModel
       to: loadEvidenceBundles
     - from: GenerateSystemModel
       to: mapOpenQuestions
@@ -210,11 +226,13 @@ calls:
     - from: GenerateSystemModel
       to: mapTrustZones
     - from: GenerateSystemModel
-      to: time.Format
-    - from: GenerateSystemModel
       to: time.Now
-    - from: GenerateSystemModel
-      to: time.UTC
+    - from: ReadSystemModel
+      to: fmt.Errorf
+    - from: ReadSystemModel
+      to: os.ReadFile
+    - from: ReadSystemModel
+      to: yaml.Unmarshal
     - from: WriteSystemModel
       to: fmt.Errorf
     - from: WriteSystemModel
@@ -251,6 +269,8 @@ calls:
       to: make
     - from: buildInventory
       to: sort.Strings
+    - from: buildInventory
+      to: strings.Split
     - from: buildPackageSummaries
       to: append
     - from: buildPackageSummaries
@@ -262,7 +282,7 @@ calls:
     - from: buildPackageSummaries
       to: sort.Strings
     - from: buildPackageSummaries
-      to: top10
+      to: topN
     - from: buildPackageSummaries.<anonymous>
       to: append
     - from: buildPackageSummaries.<anonymous>
@@ -285,6 +305,12 @@ calls:
       to: strings.Join
     - from: evidenceRef
       to: fmt.Sprintf
+    - from: linkEffectsToDomains
+      to: len
+    - from: linkEffectsToDomains
+      to: make
+    - from: loadEvidenceBundles
+      to: LoadSettings
     - from: loadEvidenceBundles
       to: filepath.WalkDir
     - from: loadEvidenceBundles
@@ -294,13 +320,19 @@ calls:
     - from: loadEvidenceBundles.<anonymous>
       to: append
     - from: loadEvidenceBundles.<anonymous>
+      to: d.IsDir
+    - from: loadEvidenceBundles.<anonymous>
+      to: d.Name
+    - from: loadEvidenceBundles.<anonymous>
+      to: filepath.Rel
+    - from: loadEvidenceBundles.<anonymous>
+      to: filepath.ToSlash
+    - from: loadEvidenceBundles.<anonymous>
       to: fmt.Errorf
     - from: loadEvidenceBundles.<anonymous>
-      to: fs.IsDir
-    - from: loadEvidenceBundles.<anonymous>
-      to: fs.Name
-    - from: loadEvidenceBundles.<anonymous>
       to: os.ReadFile
+    - from: loadEvidenceBundles.<anonymous>
+      to: settings.IsDenied
     - from: loadEvidenceBundles.<anonymous>
       to: strings.HasPrefix
     - from: loadEvidenceBundles.<anonymous>

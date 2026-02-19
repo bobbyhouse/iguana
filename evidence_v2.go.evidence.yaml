@@ -1,7 +1,7 @@
 version: 2
 file:
     path: evidence_v2.go
-    sha256: ae8c2d19d515ebc2fb55c22816f8b7edbd79d7a6c401eecbd11b32a68c5b494f
+    sha256: 2a97c0b4eb844cf141ab586e2cf9c8de9ca11014e7109462929dcd445b865a7f
 package:
     name: main
     imports:
@@ -206,11 +206,13 @@ calls:
     - from: buildBundle
       to: makeQualifier
     - from: buildBundleForFile
-      to: ast.Pos
-    - from: buildBundleForFile
       to: buildBundle
     - from: buildBundleForFile
+      to: f.Pos
+    - from: buildBundleForFile
       to: fmt.Errorf
+    - from: buildBundleForFile
+      to: fset.Position
     - from: buildBundleForFile
       to: hex.EncodeToString
     - from: buildBundleForFile
@@ -221,8 +223,6 @@ calls:
       to: sha256.Sum256
     - from: buildBundleForFile
       to: token.NewFileSet
-    - from: buildBundleForFile
-      to: token.Position
     - from: createEvidenceBundleV2
       to: buildBundle
     - from: createEvidenceBundleV2
@@ -262,6 +262,8 @@ calls:
     - from: extractCalls.<anonymous>
       to: resolveCallTarget
     - from: extractFunction
+      to: Type
+    - from: extractFunction
       to: append
     - from: extractFunction
       to: ast.IsExported
@@ -270,21 +272,27 @@ calls:
     - from: extractFunction
       to: len
     - from: extractFunction
-      to: types.At
+      to: obj.Type
     - from: extractFunction
-      to: types.Len
+      to: params.At
     - from: extractFunction
-      to: types.Params
+      to: params.Len
     - from: extractFunction
-      to: types.Recv
+      to: recv.Type
     - from: extractFunction
-      to: types.Results
+      to: results.At
     - from: extractFunction
-      to: types.Type
+      to: results.Len
+    - from: extractFunction
+      to: sig.Params
+    - from: extractFunction
+      to: sig.Recv
+    - from: extractFunction
+      to: sig.Results
+    - from: extractFunction
+      to: sig.Variadic
     - from: extractFunction
       to: types.TypeString
-    - from: extractFunction
-      to: types.Variadic
     - from: extractPackageMeta
       to: append
     - from: extractPackageMeta
@@ -302,6 +310,8 @@ calls:
     - from: extractSignals
       to: strings.HasPrefix
     - from: extractSymbols
+      to: String
+    - from: extractSymbols
       to: append
     - from: extractSymbols
       to: ast.IsExported
@@ -310,17 +320,17 @@ calls:
     - from: extractSymbols
       to: sort.Slice
     - from: extractSymbols
-      to: token.String
-    - from: extractSymbols
       to: typeKind
+    - from: funcDeclName
+      to: Type
     - from: funcDeclName
       to: exprToString
     - from: funcDeclName
       to: len
     - from: funcDeclName
-      to: types.Recv
+      to: obj.Type
     - from: funcDeclName
-      to: types.Type
+      to: sig.Recv
     - from: funcDeclName
       to: types.TypeString
     - from: loadPackageForDir
@@ -332,7 +342,7 @@ calls:
     - from: loadPackageForDir
       to: token.NewFileSet
     - from: loadTypeInfoForFile
-      to: ast.Pos
+      to: f.Pos
     - from: loadTypeInfoForFile
       to: filepath.Abs
     - from: loadTypeInfoForFile
@@ -340,21 +350,23 @@ calls:
     - from: loadTypeInfoForFile
       to: fmt.Errorf
     - from: loadTypeInfoForFile
+      to: fset.Position
+    - from: loadTypeInfoForFile
       to: len
     - from: loadTypeInfoForFile
       to: packages.Load
     - from: loadTypeInfoForFile
       to: token.NewFileSet
-    - from: loadTypeInfoForFile
-      to: token.Position
     - from: makeQualifier.<anonymous>
-      to: types.Name
+      to: p.Name
     - from: resolveCallTarget
-      to: types.Imported
+      to: Name
     - from: resolveCallTarget
-      to: types.Name
+      to: obj.Name
     - from: resolveCallTarget
-      to: types.Pkg
+      to: obj.Pkg
+    - from: resolveCallTarget
+      to: pkgName.Imported
     - from: validateEvidenceBundleV2
       to: filepath.FromSlash
     - from: validateEvidenceBundleV2
@@ -365,6 +377,8 @@ calls:
       to: os.ReadFile
     - from: validateEvidenceBundleV2
       to: sha256.Sum256
+    - from: walkAndGenerate
+      to: LoadSettings
     - from: walkAndGenerate
       to: append
     - from: walkAndGenerate
@@ -390,15 +404,23 @@ calls:
     - from: walkAndGenerate.<anonymous>
       to: append
     - from: walkAndGenerate.<anonymous>
+      to: d.IsDir
+    - from: walkAndGenerate.<anonymous>
+      to: d.Name
+    - from: walkAndGenerate.<anonymous>
       to: filepath.Dir
     - from: walkAndGenerate.<anonymous>
       to: filepath.Ext
     - from: walkAndGenerate.<anonymous>
-      to: fs.IsDir
+      to: filepath.Rel
     - from: walkAndGenerate.<anonymous>
-      to: fs.Name
+      to: filepath.ToSlash
+    - from: walkAndGenerate.<anonymous>
+      to: settings.IsDenied
     - from: walkAndGenerate.<anonymous>
       to: strings.HasPrefix
+    - from: walkAndGenerate.<anonymous>
+      to: strings.HasSuffix
     - from: writeBundleAt
       to: fmt.Errorf
     - from: writeBundleAt
