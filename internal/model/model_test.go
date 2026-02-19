@@ -1,4 +1,4 @@
-package main
+package model
 
 // system_model_test.go — Deterministic tests for system model generation.
 //
@@ -19,6 +19,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"iguana/internal/evidence"
 )
 
 // ---------------------------------------------------------------------------
@@ -26,21 +28,21 @@ import (
 // ---------------------------------------------------------------------------
 
 // makeTestBundle constructs a minimal EvidenceBundle for testing.
-func makeTestBundle(path, sha256, pkgName string, signals Signals) *EvidenceBundle {
-	return &EvidenceBundle{
+func makeTestBundle(path, sha256, pkgName string, signals evidence.Signals) *evidence.EvidenceBundle {
+	return &evidence.EvidenceBundle{
 		Version: 2,
-		File: FileMeta{
+		File: evidence.FileMeta{
 			Path:   path,
 			SHA256: sha256,
 		},
-		Package: PackageMeta{Name: pkgName},
+		Package: evidence.PackageMeta{Name: pkgName},
 		Signals: signals,
 	}
 }
 
 // writeTestBundle writes a minimal evidence YAML to dir/<name>.evidence.yaml.
 // Returns the path to the written file.
-func writeTestBundle(t *testing.T, dir, name string, bundle *EvidenceBundle) string {
+func writeTestBundle(t *testing.T, dir, name string, bundle *evidence.EvidenceBundle) string {
 	t.Helper()
 	data, err := yaml.Marshal(bundle)
 	if err != nil {
@@ -124,7 +126,7 @@ func TestLoadEvidenceBundles_Empty(t *testing.T) {
 func TestLoadEvidenceBundles_Basic(t *testing.T) {
 	dir := t.TempDir()
 
-	bundle := makeTestBundle("pkg/foo.go", "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234", "foo", Signals{FSReads: true})
+	bundle := makeTestBundle("pkg/foo.go", "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234", "foo", evidence.Signals{FSReads: true})
 	writeTestBundle(t, dir, "foo.go", bundle)
 
 	bundles, err := loadEvidenceBundles(dir)
@@ -153,11 +155,11 @@ func TestLoadEvidenceBundles_Basic(t *testing.T) {
 // TestComputeBundleSetHash_Deterministic verifies that feeding the same bundles
 // in a different order produces the same hash (INV-31).
 func TestComputeBundleSetHash_Deterministic(t *testing.T) {
-	b1 := makeTestBundle("a.go", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1", "main", Signals{})
-	b2 := makeTestBundle("b.go", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2", "main", Signals{})
+	b1 := makeTestBundle("a.go", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1", "main", evidence.Signals{})
+	b2 := makeTestBundle("b.go", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2", "main", evidence.Signals{})
 
-	hash1 := computeBundleSetHash([]*EvidenceBundle{b1, b2})
-	hash2 := computeBundleSetHash([]*EvidenceBundle{b2, b1})
+	hash1 := computeBundleSetHash([]*evidence.EvidenceBundle{b1, b2})
+	hash2 := computeBundleSetHash([]*evidence.EvidenceBundle{b2, b1})
 
 	if hash1 != hash2 {
 		t.Errorf("hash depends on order: %q vs %q", hash1, hash2)
@@ -174,10 +176,10 @@ func TestComputeBundleSetHash_Deterministic(t *testing.T) {
 // TestBuildInventory_GroupsByPackage verifies that two bundles in the same
 // package produce a single inventory entry (INV-28).
 func TestBuildInventory_GroupsByPackage(t *testing.T) {
-	b1 := makeTestBundle("pkg/foo.go", "a", "auth", Signals{})
-	b2 := makeTestBundle("pkg/bar.go", "b", "auth", Signals{})
+	b1 := makeTestBundle("pkg/foo.go", "a", "auth", evidence.Signals{})
+	b2 := makeTestBundle("pkg/bar.go", "b", "auth", evidence.Signals{})
 
-	inv := buildInventory([]*EvidenceBundle{b1, b2})
+	inv := buildInventory([]*evidence.EvidenceBundle{b1, b2})
 
 	if len(inv.Packages) != 1 {
 		t.Fatalf("expected 1 package, got %d", len(inv.Packages))
@@ -198,16 +200,16 @@ func TestBuildInventory_GroupsByPackage(t *testing.T) {
 // TestBuildInventory_Entrypoints verifies that a package=main bundle with a
 // main function symbol is identified as an entrypoint.
 func TestBuildInventory_Entrypoints(t *testing.T) {
-	b1 := &EvidenceBundle{
+	b1 := &evidence.EvidenceBundle{
 		Version: 2,
-		File:    FileMeta{Path: "main.go", SHA256: "a"},
-		Package: PackageMeta{Name: "main"},
-		Symbols: Symbols{
-			Functions: []Function{{Name: "main", Exported: false}},
+		File:    evidence.FileMeta{Path: "main.go", SHA256: "a"},
+		Package: evidence.PackageMeta{Name: "main"},
+		Symbols: evidence.Symbols{
+			Functions: []evidence.Function{{Name: "main", Exported: false}},
 		},
 	}
 
-	inv := buildInventory([]*EvidenceBundle{b1})
+	inv := buildInventory([]*evidence.EvidenceBundle{b1})
 
 	if len(inv.Entrypoints) != 1 {
 		t.Fatalf("expected 1 entrypoint, got %d", len(inv.Entrypoints))
@@ -228,9 +230,9 @@ func TestBuildInventory_Entrypoints(t *testing.T) {
 // TestBuildBoundaries_DBCalls verifies that a bundle with DBCalls=true produces
 // a db persistence boundary entry.
 func TestBuildBoundaries_DBCalls(t *testing.T) {
-	bnd := makeTestBundle("store/db.go", "x", "store", Signals{DBCalls: true})
+	bnd := makeTestBundle("store/db.go", "x", "store", evidence.Signals{DBCalls: true})
 
-	boundaries := buildBoundaries([]*EvidenceBundle{bnd})
+	boundaries := buildBoundaries([]*evidence.EvidenceBundle{bnd})
 
 	if len(boundaries.Persistence) == 0 {
 		t.Fatal("expected at least one persistence boundary")
@@ -252,9 +254,9 @@ func TestBuildBoundaries_DBCalls(t *testing.T) {
 // TestBuildBoundaries_NetCalls verifies that a bundle with NetCalls=true
 // produces a network.outbound entry.
 func TestBuildBoundaries_NetCalls(t *testing.T) {
-	bnd := makeTestBundle("client/http.go", "x", "client", Signals{NetCalls: true})
+	bnd := makeTestBundle("client/http.go", "x", "client", evidence.Signals{NetCalls: true})
 
-	boundaries := buildBoundaries([]*EvidenceBundle{bnd})
+	boundaries := buildBoundaries([]*evidence.EvidenceBundle{bnd})
 
 	if boundaries.Network == nil {
 		t.Fatal("expected network boundary, got nil")
@@ -271,10 +273,10 @@ func TestBuildBoundaries_NetCalls(t *testing.T) {
 // TestBuildEffects_FromSignals verifies that each signal kind produces the
 // correct effect kind.
 func TestBuildEffects_FromSignals(t *testing.T) {
-	bundles := []*EvidenceBundle{
-		makeTestBundle("db.go", "a", "store", Signals{DBCalls: true}),
-		makeTestBundle("fs.go", "b", "io", Signals{FSReads: true, FSWrites: true}),
-		makeTestBundle("net.go", "c", "http", Signals{NetCalls: true}),
+	bundles := []*evidence.EvidenceBundle{
+		makeTestBundle("db.go", "a", "store", evidence.Signals{DBCalls: true}),
+		makeTestBundle("fs.go", "b", "io", evidence.Signals{FSReads: true, FSWrites: true}),
+		makeTestBundle("net.go", "c", "http", evidence.Signals{NetCalls: true}),
 	}
 
 	effects := buildEffects(bundles)
@@ -293,9 +295,9 @@ func TestBuildEffects_FromSignals(t *testing.T) {
 
 // TestBuildEffects_Sorted verifies effects are sorted by kind then via (INV-28).
 func TestBuildEffects_Sorted(t *testing.T) {
-	bundles := []*EvidenceBundle{
-		makeTestBundle("z.go", "a", "pkg", Signals{FSReads: true, NetCalls: true}),
-		makeTestBundle("a.go", "b", "pkg", Signals{FSReads: true, DBCalls: true}),
+	bundles := []*evidence.EvidenceBundle{
+		makeTestBundle("z.go", "a", "pkg", evidence.Signals{FSReads: true, NetCalls: true}),
+		makeTestBundle("a.go", "b", "pkg", evidence.Signals{FSReads: true, DBCalls: true}),
 	}
 
 	effects := buildEffects(bundles)
@@ -308,5 +310,100 @@ func TestBuildEffects_Sorted(t *testing.T) {
 		if curr.Kind == prev.Kind && curr.Via < prev.Via {
 			t.Errorf("effects not sorted by via at %d: %q < %q", i, curr.Via, prev.Via)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests — SystemModelUpToDate (INV-51)
+// ---------------------------------------------------------------------------
+
+// TestSystemModelUpToDate_NoFile verifies that SystemModelUpToDate returns
+// false (not up to date) when no system_model.yaml exists yet.
+func TestSystemModelUpToDate_NoFile(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write one evidence bundle so loadEvidenceBundles finds something.
+	b := makeTestBundle("pkg/foo.go", "aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111", "foo", evidence.Signals{})
+	writeTestBundle(t, dir, "foo.go", b)
+
+	upToDate, err := SystemModelUpToDate(dir, filepath.Join(dir, "system_model.yaml"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if upToDate {
+		t.Error("expected not up to date when no model file exists")
+	}
+}
+
+// TestSystemModelUpToDate_MatchingHash verifies that SystemModelUpToDate
+// returns true when the existing model's bundle_set_sha256 matches.
+func TestSystemModelUpToDate_MatchingHash(t *testing.T) {
+	dir := t.TempDir()
+
+	b := makeTestBundle("pkg/foo.go", "bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222", "foo", evidence.Signals{})
+	writeTestBundle(t, dir, "foo.go", b)
+
+	// Compute what the hash would be.
+	bundles := []*evidence.EvidenceBundle{b}
+	hash := computeBundleSetHash(bundles)
+
+	// Write a fake system model with that hash.
+	modelPath := filepath.Join(dir, "system_model.yaml")
+	m := &SystemModel{
+		Version: 1,
+		Inputs:  ModelInputs{BundleSetSHA256: hash},
+	}
+	if err := WriteSystemModel(m, modelPath); err != nil {
+		t.Fatalf("WriteSystemModel: %v", err)
+	}
+
+	upToDate, err := SystemModelUpToDate(dir, modelPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !upToDate {
+		t.Error("expected up to date when hash matches")
+	}
+}
+
+// TestSystemModelUpToDate_DifferentHash verifies that SystemModelUpToDate
+// returns false when the stored hash does not match the current bundles.
+func TestSystemModelUpToDate_DifferentHash(t *testing.T) {
+	dir := t.TempDir()
+
+	b := makeTestBundle("pkg/foo.go", "cccc3333cccc3333cccc3333cccc3333cccc3333cccc3333cccc3333cccc3333", "foo", evidence.Signals{})
+	writeTestBundle(t, dir, "foo.go", b)
+
+	// Write a model with a stale/wrong hash.
+	modelPath := filepath.Join(dir, "system_model.yaml")
+	m := &SystemModel{
+		Version: 1,
+		Inputs:  ModelInputs{BundleSetSHA256: "0000000000000000000000000000000000000000000000000000000000000000"},
+	}
+	if err := WriteSystemModel(m, modelPath); err != nil {
+		t.Fatalf("WriteSystemModel: %v", err)
+	}
+
+	upToDate, err := SystemModelUpToDate(dir, modelPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if upToDate {
+		t.Error("expected not up to date when hash differs")
+	}
+}
+
+// TestSystemModelUpToDate_NoBundles verifies that SystemModelUpToDate returns
+// false (not up to date) when there are no evidence bundles in the directory.
+func TestSystemModelUpToDate_NoBundles(t *testing.T) {
+	dir := t.TempDir()
+	modelPath := filepath.Join(dir, "system_model.yaml")
+
+	upToDate, err := SystemModelUpToDate(dir, modelPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if upToDate {
+		t.Error("expected not up to date when no bundles exist")
 	}
 }

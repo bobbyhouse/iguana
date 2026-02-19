@@ -1,168 +1,162 @@
 version: 1
-generated_at: "2026-02-19T04:53:19Z"
+generated_at: "2026-02-19T06:05:14Z"
 inputs:
-    bundle_set_sha256: e679c0069285c2e9f40e4d7b19bb4eebadb5b9e09e60ae6ced69786348fd78c9
+    bundle_set_sha256: 217ae736f22b9eb439cd4011d094fdc6f731f557bad34317f5e8d5030379cf43
 inventory:
     packages:
+        - name: evidence
+          files:
+            - internal/evidence/generate.go
+          imports:
+            - settings
+          evidence_refs:
+            - bundle:internal/evidence/generate.go@v2
         - name: main
           files:
-            - evidence_v2.go
-            - main.go
-            - obsidian.go
-            - settings.go
-            - system_model.go
+            - cmd/iguana/main.go
+          imports:
+            - evidence
+            - model
+            - obsidian
           evidence_refs:
-            - bundle:evidence_v2.go@v2
-            - bundle:main.go@v2
-            - bundle:obsidian.go@v2
-            - bundle:settings.go@v2
-            - bundle:system_model.go@v2
+            - bundle:cmd/iguana/main.go@v2
+        - name: model
+          files:
+            - internal/model/model.go
+          imports:
+            - evidence
+            - settings
+          evidence_refs:
+            - bundle:internal/model/model.go@v2
+        - name: obsidian
+          files:
+            - internal/obsidian/vault.go
+          imports:
+            - model
+          evidence_refs:
+            - bundle:internal/obsidian/vault.go@v2
+        - name: settings
+          files:
+            - internal/settings/settings.go
+          evidence_refs:
+            - bundle:internal/settings/settings.go@v2
     entrypoints:
         - package: main
           symbol: main
           evidence_refs:
-            - bundle:main.go@v2#symbol:main
+            - bundle:cmd/iguana/main.go@v2#symbol:main
 state_domains:
     - id: configuration
-      description: Application settings and configuration management
+      description: Application settings and permissions configuration
       owners:
-        - main
+        - settings
       aggregate: Settings
       representations:
         - Permissions
-      primary_mutators:
-        - LoadSettings
       primary_readers:
         - IsDenied
+        - LoadSettings
       evidence_refs:
-        - bundle:evidence_v2.go@v2
-        - bundle:main.go@v2
-        - bundle:obsidian.go@v2
-        - bundle:settings.go@v2
-        - bundle:system_model.go@v2
+        - bundle:internal/settings/settings.go@v2
       confidence: 0.8
     - id: evidence_analysis
-      description: Core domain for collecting and analyzing Go code evidence through static analysis
+      description: Static analysis artifacts and metadata extracted from Go codebases
       owners:
-        - main
+        - evidence
       aggregate: EvidenceBundle
       representations:
         - FileMeta
         - PackageMeta
         - Symbols
       primary_mutators:
-        - GenerateSystemModel
+        - CreateEvidenceBundle
+        - WriteEvidenceBundle
       primary_readers:
-        - ReadSystemModel
+        - WalkAndGenerate
       evidence_refs:
-        - bundle:evidence_v2.go@v2
-        - bundle:main.go@v2
-        - bundle:obsidian.go@v2
-        - bundle:settings.go@v2
-        - bundle:system_model.go@v2
+        - bundle:internal/evidence/generate.go@v2
       confidence: 0.9
     - id: system_modeling
-      description: Domain for representing architectural models and system boundaries derived from evidence
+      description: Architectural models and analysis derived from evidence bundles
       owners:
-        - main
+        - model
       aggregate: SystemModel
       representations:
         - Boundaries
         - StateDomain
         - TrustZone
       primary_mutators:
+        - GenerateSystemModel
         - WriteSystemModel
       primary_readers:
         - ReadSystemModel
+        - SystemModelUpToDate
       evidence_refs:
-        - bundle:evidence_v2.go@v2
-        - bundle:main.go@v2
-        - bundle:obsidian.go@v2
-        - bundle:settings.go@v2
-        - bundle:system_model.go@v2
-      confidence: 0.85
+        - bundle:internal/model/model.go@v2
+      confidence: 0.8
 boundaries:
     persistence:
         - kind: fs
           writers:
-            - file: evidence_v2.go
+            - file: internal/evidence/generate.go
               evidence_refs:
-                - bundle:evidence_v2.go@v2#signal:fs_writes
-            - file: main.go
+                - bundle:internal/evidence/generate.go@v2#signal:fs_writes
+            - file: internal/model/model.go
               evidence_refs:
-                - bundle:main.go@v2#signal:fs_writes
-            - file: obsidian.go
+                - bundle:internal/model/model.go@v2#signal:fs_writes
+            - file: internal/obsidian/vault.go
               evidence_refs:
-                - bundle:obsidian.go@v2#signal:fs_writes
-            - file: system_model.go
-              evidence_refs:
-                - bundle:system_model.go@v2#signal:fs_writes
+                - bundle:internal/obsidian/vault.go@v2#signal:fs_writes
 effects:
     - kind: fs_read
-      domain: configuration
-      via: evidence_v2.go
+      domain: evidence_analysis
+      via: internal/evidence/generate.go
       evidence_refs:
-        - bundle:evidence_v2.go@v2#signal:fs_reads
+        - bundle:internal/evidence/generate.go@v2#signal:fs_reads
+    - kind: fs_read
+      domain: system_modeling
+      via: internal/model/model.go
+      evidence_refs:
+        - bundle:internal/model/model.go@v2#signal:fs_reads
     - kind: fs_read
       domain: configuration
-      via: main.go
+      via: internal/settings/settings.go
       evidence_refs:
-        - bundle:main.go@v2#signal:fs_reads
-    - kind: fs_read
-      domain: configuration
-      via: settings.go
-      evidence_refs:
-        - bundle:settings.go@v2#signal:fs_reads
-    - kind: fs_read
-      domain: configuration
-      via: system_model.go
-      evidence_refs:
-        - bundle:system_model.go@v2#signal:fs_reads
+        - bundle:internal/settings/settings.go@v2#signal:fs_reads
     - kind: fs_write
-      domain: configuration
-      via: evidence_v2.go
+      domain: evidence_analysis
+      via: internal/evidence/generate.go
       evidence_refs:
-        - bundle:evidence_v2.go@v2#signal:fs_writes
+        - bundle:internal/evidence/generate.go@v2#signal:fs_writes
     - kind: fs_write
-      domain: configuration
-      via: main.go
+      domain: system_modeling
+      via: internal/model/model.go
       evidence_refs:
-        - bundle:main.go@v2#signal:fs_writes
+        - bundle:internal/model/model.go@v2#signal:fs_writes
     - kind: fs_write
-      domain: configuration
-      via: obsidian.go
+      via: internal/obsidian/vault.go
       evidence_refs:
-        - bundle:obsidian.go@v2#signal:fs_writes
-    - kind: fs_write
-      domain: configuration
-      via: system_model.go
-      evidence_refs:
-        - bundle:system_model.go@v2#signal:fs_writes
+        - bundle:internal/obsidian/vault.go@v2#signal:fs_writes
 trust_zones:
     - id: internal
       packages:
-        - main
-      external_via:
-        - filesystem
+        - evidence
+        - model
+        - obsidian
+        - settings
       evidence_refs:
-        - bundle:evidence_v2.go@v2
-        - bundle:main.go@v2
-        - bundle:obsidian.go@v2
-        - bundle:settings.go@v2
-        - bundle:system_model.go@v2
+        - bundle:internal/evidence/generate.go@v2
+        - bundle:internal/model/model.go@v2
+        - bundle:internal/obsidian/vault.go@v2
+        - bundle:internal/settings/settings.go@v2
 open_questions:
-    - question: How are the various boundary types (NetworkBoundary, PersistenceBoundary, ProcessBoundary) used within the SystemModel?
+    - question: How does the model package interact with baml_client for system model generation?
       related_domain: system_modeling
       missing_evidence:
-        - boundary creation logic
-        - boundary validation rules
-    - question: What is the relationship between EvidenceBundle and EvidenceBundleV2?
+        - baml_client package implementation
+        - network call patterns in GenerateSystemModel
+    - question: What is the relationship between evidence bundles and system model generation workflow?
       related_domain: evidence_analysis
       missing_evidence:
-        - data format differences
-        - version migration logic
-    - question: What triggers the generation of Obsidian vault output and how does it relate to the core system model?
-      related_domain: system_modeling
-      missing_evidence:
-        - obsidian generation triggers
-        - output format specification
+        - data flow between evidence and model packages
+        - dependency graph

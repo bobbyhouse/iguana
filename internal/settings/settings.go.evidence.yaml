@@ -1,9 +1,9 @@
 version: 2
 file:
-    path: settings.go
-    sha256: 1fa4272dd7d0faebd1e28bccae8c2b95fd0744f3ae8127d3ff7b70fc470fb44e
+    path: internal/settings/settings.go
+    sha256: c3b38361bf03f417d0d0bee6bafcc60806e929c3306d67681182638bfb54b898
 package:
-    name: main
+    name: settings
     imports:
         - path: fmt
         - path: gopkg.in/yaml.v3
@@ -43,9 +43,17 @@ symbols:
         - name: Permissions
           kind: struct
           exported: true
+          fields:
+            - name: Deny
+              type: '[]string'
         - name: Settings
           kind: struct
           exported: true
+          fields:
+            - name: Permissions
+              type: Permissions
+    constructors:
+        - LoadSettings
 calls:
     - from: '*Settings.IsDenied'
       to: matchDenyPattern
@@ -83,3 +91,5 @@ signals:
     db_calls: false
     net_calls: false
     concurrency: false
+    yaml_io: true
+    json_io: false

@@ -1,11 +1,12 @@
 version: 2
 file:
-    path: obsidian.go
-    sha256: 21b21026101bb21f3f00bbc78275385587e665314c03ebd30965f1a23fa47926
+    path: internal/obsidian/vault.go
+    sha256: 5b1cc7b1e6b4fa4efbfdbd32cb3dd629d153cb8ba0e3b5d2d96ea6cc151463de
 package:
-    name: main
+    name: obsidian
     imports:
         - path: fmt
+        - path: iguana/internal/model
         - path: os
         - path: path/filepath
         - path: sort
@@ -15,21 +16,21 @@ symbols:
         - name: GenerateObsidianVault
           exported: true
           params:
-            - '*SystemModel'
+            - '*model.SystemModel'
             - string
           returns:
             - error
         - name: buildConcurrencyToDomains
           exported: false
           params:
-            - '[]ConcurrencyDomain'
-            - '[]Effect'
+            - '[]model.ConcurrencyDomain'
+            - '[]model.Effect'
           returns:
             - map[string][]string
         - name: buildDomainPackageEffects
           exported: false
           params:
-            - '[]Effect'
+            - '[]model.Effect'
             - map[string]string
           returns:
             - map[string][]string
@@ -37,45 +38,45 @@ symbols:
         - name: buildDomainToConcurrentFiles
           exported: false
           params:
-            - '[]ConcurrencyDomain'
-            - '[]Effect'
+            - '[]model.ConcurrencyDomain'
+            - '[]model.Effect'
           returns:
             - map[string][]string
         - name: buildFileToPackage
           exported: false
           params:
-            - '[]PackageEntry'
+            - '[]model.PackageEntry'
           returns:
             - map[string]string
         - name: buildImportedBy
           exported: false
           params:
-            - '[]PackageEntry'
+            - '[]model.PackageEntry'
           returns:
             - map[string][]string
         - name: buildPkgEffects
           exported: false
           params:
-            - '[]Effect'
+            - '[]model.Effect'
             - map[string]string
           returns:
-            - map[string][]Effect
+            - map[string][]model.Effect
         - name: buildPkgToDomains
           exported: false
           params:
-            - '[]StateDomain'
+            - '[]model.StateDomain'
           returns:
             - map[string][]string
         - name: buildPkgToZones
           exported: false
           params:
-            - '[]TrustZone'
+            - '[]model.TrustZone'
           returns:
             - map[string][]string
         - name: buildVaultCtx
           exported: false
           params:
-            - '*SystemModel'
+            - '*model.SystemModel'
           returns:
             - vaultCtx
         - name: frontmatter
@@ -93,7 +94,7 @@ symbols:
         - name: writeConcurrencyDomainNote
           exported: false
           params:
-            - ConcurrencyDomain
+            - model.ConcurrencyDomain
             - vaultCtx
             - string
           returns:
@@ -101,7 +102,7 @@ symbols:
         - name: writeEffectsNote
           exported: false
           params:
-            - '[]Effect'
+            - '[]model.Effect'
             - string
           returns:
             - error
@@ -115,14 +116,14 @@ symbols:
         - name: writeOpenQuestionsNote
           exported: false
           params:
-            - '[]OpenQuestion'
+            - '[]model.OpenQuestion'
             - string
           returns:
             - error
         - name: writePackageNote
           exported: false
           params:
-            - PackageEntry
+            - model.PackageEntry
             - vaultCtx
             - string
           returns:
@@ -130,7 +131,7 @@ symbols:
         - name: writeStateDomainNote
           exported: false
           params:
-            - StateDomain
+            - model.StateDomain
             - vaultCtx
             - string
           returns:
@@ -138,14 +139,14 @@ symbols:
         - name: writeTrustZoneNote
           exported: false
           params:
-            - TrustZone
+            - model.TrustZone
             - string
           returns:
             - error
         - name: writeVaultIndex
           exported: false
           params:
-            - '*SystemModel'
+            - '*model.SystemModel'
             - string
           returns:
             - error
@@ -153,6 +154,8 @@ symbols:
         - name: vaultCtx
           kind: struct
           exported: false
+    constructors:
+        - buildVaultCtx
 calls:
     - from: GenerateObsidianVault
       to: buildVaultCtx
@@ -368,3 +371,5 @@ signals:
     db_calls: false
     net_calls: false
     concurrency: false
+    yaml_io: false
+    json_io: false

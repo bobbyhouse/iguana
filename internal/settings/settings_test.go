@@ -1,4 +1,4 @@
-package main
+package settings
 
 // settings_test.go — Tests for settings loading and deny-pattern matching.
 

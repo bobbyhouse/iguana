@@ -1,8 +1,8 @@
-package main
+package obsidian
 
 // obsidian_test.go — Tests for the Obsidian vault generator.
 //
-// All tests build *SystemModel directly (no file I/O for model construction),
+// All tests build *model.SystemModel directly (no file I/O for model construction),
 // call GenerateObsidianVault, then assert on file contents.
 //
 // Invariants tested:
@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"iguana/internal/model"
 )
 
 // ---------------------------------------------------------------------------
@@ -23,19 +25,19 @@ import (
 // ---------------------------------------------------------------------------
 
 // minimalModel returns a small but complete SystemModel for use in tests.
-func minimalModel() *SystemModel {
-	return &SystemModel{
+func minimalModel() *model.SystemModel {
+	return &model.SystemModel{
 		Version:     1,
 		GeneratedAt: "2024-01-01T00:00:00Z",
-		Inputs:      ModelInputs{BundleSetSHA256: "abc123"},
-		Inventory: Inventory{
-			Packages: []PackageEntry{
+		Inputs:      model.ModelInputs{BundleSetSHA256: "abc123"},
+		Inventory: model.Inventory{
+			Packages: []model.PackageEntry{
 				// main imports store — creates a directed import graph edge.
 				{Name: "main", Files: []string{"main.go"}, Imports: []string{"store"}},
 				{Name: "store", Files: []string{"store/db.go", "store/query.go"}},
 			},
 		},
-		StateDomains: []StateDomain{
+		StateDomains: []model.StateDomain{
 			{
 				ID:              "evidence_store",
 				Description:     "Stores evidence bundles",
@@ -47,24 +49,24 @@ func minimalModel() *SystemModel {
 				Confidence:      0.9,
 			},
 		},
-		TrustZones: []TrustZone{
+		TrustZones: []model.TrustZone{
 			{
 				ID:          "internal",
 				Packages:    []string{"main", "store"},
 				ExternalVia: []string{"cli_args"},
 			},
 		},
-		ConcurrencyDomains: []ConcurrencyDomain{
+		ConcurrencyDomains: []model.ConcurrencyDomain{
 			{
 				ID:    "store/db.go",
 				Files: []string{"store/db.go"},
 			},
 		},
-		Effects: []Effect{
+		Effects: []model.Effect{
 			{Kind: "fs_read", Via: "main.go", Domain: "evidence_store"},
 			{Kind: "fs_write", Via: "store/db.go", Domain: "evidence_store"},
 		},
-		OpenQuestions: []OpenQuestion{
+		OpenQuestions: []model.OpenQuestion{
 			{
 				Question:        "Is the store thread-safe?",
 				RelatedDomain:   "evidence_store",
@@ -129,9 +131,9 @@ func TestSanitizeFilename(t *testing.T) {
 // required subdirectories are always created, even with a minimal model.
 func TestGenerateObsidianVault_DirectoryStructure(t *testing.T) {
 	dir := t.TempDir()
-	model := minimalModel()
+	m := minimalModel()
 
-	if err := GenerateObsidianVault(model, dir); err != nil {
+	if err := GenerateObsidianVault(m, dir); err != nil {
 		t.Fatalf("GenerateObsidianVault: %v", err)
 	}
 
@@ -161,9 +163,9 @@ func TestGenerateObsidianVault_DirectoryStructure(t *testing.T) {
 // [[path|display]] wiki links with no .md extension in the path component.
 func TestGenerateObsidianVault_IndexContainsLinks(t *testing.T) {
 	dir := t.TempDir()
-	model := minimalModel()
+	m := minimalModel()
 
-	if err := GenerateObsidianVault(model, dir); err != nil {
+	if err := GenerateObsidianVault(m, dir); err != nil {
 		t.Fatalf("GenerateObsidianVault: %v", err)
 	}
 
@@ -206,9 +208,9 @@ func TestGenerateObsidianVault_IndexContainsLinks(t *testing.T) {
 // contains wiki links back to the state domains that own it.
 func TestGenerateObsidianVault_PackageNoteLinks(t *testing.T) {
 	dir := t.TempDir()
-	model := minimalModel()
+	m := minimalModel()
 
-	if err := GenerateObsidianVault(model, dir); err != nil {
+	if err := GenerateObsidianVault(m, dir); err != nil {
 		t.Fatalf("GenerateObsidianVault: %v", err)
 	}
 
@@ -232,9 +234,9 @@ func TestGenerateObsidianVault_PackageNoteLinks(t *testing.T) {
 // contains owner wiki links and confidence.
 func TestGenerateObsidianVault_StateDomainNote(t *testing.T) {
 	dir := t.TempDir()
-	model := minimalModel()
+	m := minimalModel()
 
-	if err := GenerateObsidianVault(model, dir); err != nil {
+	if err := GenerateObsidianVault(m, dir); err != nil {
 		t.Fatalf("GenerateObsidianVault: %v", err)
 	}
 
@@ -263,9 +265,9 @@ func TestGenerateObsidianVault_StateDomainNote(t *testing.T) {
 // nodes differently.
 func TestGenerateObsidianVault_Frontmatter(t *testing.T) {
 	dir := t.TempDir()
-	model := minimalModel()
+	m := minimalModel()
 
-	if err := GenerateObsidianVault(model, dir); err != nil {
+	if err := GenerateObsidianVault(m, dir); err != nil {
 		t.Fatalf("GenerateObsidianVault: %v", err)
 	}
 
@@ -297,9 +299,9 @@ func TestGenerateObsidianVault_Frontmatter(t *testing.T) {
 // and contains wiki links to state domains.
 func TestGenerateObsidianVault_EffectsNote(t *testing.T) {
 	dir := t.TempDir()
-	model := minimalModel()
+	m := minimalModel()
 
-	if err := GenerateObsidianVault(model, dir); err != nil {
+	if err := GenerateObsidianVault(m, dir); err != nil {
 		t.Fatalf("GenerateObsidianVault: %v", err)
 	}
 
@@ -327,9 +329,9 @@ func TestGenerateObsidianVault_EffectsNote(t *testing.T) {
 // GenerateObsidianVault twice on the same model produces byte-identical files.
 func TestGenerateObsidianVault_Idempotent(t *testing.T) {
 	dir := t.TempDir()
-	model := minimalModel()
+	m := minimalModel()
 
-	if err := GenerateObsidianVault(model, dir); err != nil {
+	if err := GenerateObsidianVault(m, dir); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
 
@@ -348,7 +350,7 @@ func TestGenerateObsidianVault_Idempotent(t *testing.T) {
 		t.Fatalf("walk after first run: %v", err)
 	}
 
-	if err := GenerateObsidianVault(model, dir); err != nil {
+	if err := GenerateObsidianVault(m, dir); err != nil {
 		t.Fatalf("second run: %v", err)
 	}
 
@@ -383,9 +385,9 @@ func TestGenerateObsidianVault_Idempotent(t *testing.T) {
 // directed import edges: main → store (Imports) and store ← main (Imported By).
 func TestGenerateObsidianVault_ImportGraph(t *testing.T) {
 	dir := t.TempDir()
-	model := minimalModel() // main.Imports = ["store"]
+	m := minimalModel() // main.Imports = ["store"]
 
-	if err := GenerateObsidianVault(model, dir); err != nil {
+	if err := GenerateObsidianVault(m, dir); err != nil {
 		t.Fatalf("GenerateObsidianVault: %v", err)
 	}
 
@@ -415,13 +417,14 @@ func TestGenerateObsidianVault_ImportGraph(t *testing.T) {
 // effects — not just LLM ownership.
 //
 // Model:
-//   fs_read  via main.go     → evidence_store  (main reads)
-//   fs_write via store/db.go → evidence_store  (store writes)
+//
+//	fs_read  via main.go     → evidence_store  (main reads)
+//	fs_write via store/db.go → evidence_store  (store writes)
 func TestGenerateObsidianVault_DomainWritersReaders(t *testing.T) {
 	dir := t.TempDir()
-	model := minimalModel()
+	m := minimalModel()
 
-	if err := GenerateObsidianVault(model, dir); err != nil {
+	if err := GenerateObsidianVault(m, dir); err != nil {
 		t.Fatalf("GenerateObsidianVault: %v", err)
 	}
 
@@ -453,14 +456,15 @@ func TestGenerateObsidianVault_DomainWritersReaders(t *testing.T) {
 //   - state domain notes flag concurrent access with a warning section
 //
 // Model:
-//   ConcurrencyDomain {ID: "store/db.go", Files: ["store/db.go"]}
-//   Effect {Kind: "fs_write", Via: "store/db.go", Domain: "evidence_store"}
-//   → store/db.go is both concurrent and writes to evidence_store
+//
+//	ConcurrencyDomain {ID: "store/db.go", Files: ["store/db.go"]}
+//	Effect {Kind: "fs_write", Via: "store/db.go", Domain: "evidence_store"}
+//	→ store/db.go is both concurrent and writes to evidence_store
 func TestGenerateObsidianVault_ConcurrencyDomainIntersection(t *testing.T) {
 	dir := t.TempDir()
-	model := minimalModel()
+	m := minimalModel()
 
-	if err := GenerateObsidianVault(model, dir); err != nil {
+	if err := GenerateObsidianVault(m, dir); err != nil {
 		t.Fatalf("GenerateObsidianVault: %v", err)
 	}
 
@@ -491,9 +495,9 @@ func TestGenerateObsidianVault_ConcurrencyDomainIntersection(t *testing.T) {
 // contains a table of effects it produces with kind, file, and domain links.
 func TestGenerateObsidianVault_PackageEffectsTable(t *testing.T) {
 	dir := t.TempDir()
-	model := minimalModel()
+	m := minimalModel()
 
-	if err := GenerateObsidianVault(model, dir); err != nil {
+	if err := GenerateObsidianVault(m, dir); err != nil {
 		t.Fatalf("GenerateObsidianVault: %v", err)
 	}
 
@@ -518,13 +522,13 @@ func TestGenerateObsidianVault_PackageEffectsTable(t *testing.T) {
 // with no domains, effects, trust zones, or open questions.
 func TestGenerateObsidianVault_EmptyModel(t *testing.T) {
 	dir := t.TempDir()
-	model := &SystemModel{
+	m := &model.SystemModel{
 		Version:     1,
 		GeneratedAt: "2024-01-01T00:00:00Z",
-		Inputs:      ModelInputs{BundleSetSHA256: "empty"},
+		Inputs:      model.ModelInputs{BundleSetSHA256: "empty"},
 	}
 
-	if err := GenerateObsidianVault(model, dir); err != nil {
+	if err := GenerateObsidianVault(m, dir); err != nil {
 		t.Fatalf("GenerateObsidianVault on empty model: %v", err)
 	}
 

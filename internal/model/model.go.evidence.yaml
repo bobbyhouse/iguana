@@ -1,9 +1,9 @@
 version: 2
 file:
-    path: system_model.go
-    sha256: 625574335281c55fb6bd7a87f4cd067cc82516e68dd57465f96e4a0fd596110d
+    path: internal/model/model.go
+    sha256: f92dbbe7efc9f4a30b212806ff7760e9403a496a1b9fe48bd058fe2c7c4d3f6a
 package:
-    name: main
+    name: model
     imports:
         - path: context
         - path: crypto/sha256
@@ -13,6 +13,8 @@ package:
         - path: iguana/baml_client
           alias: b
         - path: iguana/baml_client/types
+        - path: iguana/internal/evidence
+        - path: iguana/internal/settings
         - path: io/fs
         - path: os
         - path: path/filepath
@@ -36,6 +38,14 @@ symbols:
           returns:
             - '*SystemModel'
             - error
+        - name: SystemModelUpToDate
+          exported: true
+          params:
+            - string
+            - string
+          returns:
+            - bool
+            - error
         - name: WriteSystemModel
           exported: true
           params:
@@ -46,37 +56,37 @@ symbols:
         - name: buildBoundaries
           exported: false
           params:
-            - '[]*EvidenceBundleV2'
+            - '[]*evidence.EvidenceBundle'
           returns:
             - Boundaries
         - name: buildConcurrencyDomains
           exported: false
           params:
-            - '[]*EvidenceBundleV2'
+            - '[]*evidence.EvidenceBundle'
           returns:
             - '[]ConcurrencyDomain'
         - name: buildEffects
           exported: false
           params:
-            - '[]*EvidenceBundleV2'
+            - '[]*evidence.EvidenceBundle'
           returns:
             - '[]Effect'
         - name: buildInventory
           exported: false
           params:
-            - '[]*EvidenceBundleV2'
+            - '[]*evidence.EvidenceBundle'
           returns:
             - Inventory
         - name: buildPackageSummaries
           exported: false
           params:
-            - '[]*EvidenceBundleV2'
+            - '[]*evidence.EvidenceBundle'
           returns:
             - '[]types.PackageSummary'
         - name: computeBundleSetHash
           exported: false
           params:
-            - '[]*EvidenceBundleV2'
+            - '[]*evidence.EvidenceBundle'
           returns:
             - string
         - name: evidenceRef
@@ -90,7 +100,7 @@ symbols:
         - name: hasSymbol
           exported: false
           params:
-            - '*EvidenceBundleV2'
+            - '*evidence.EvidenceBundle'
             - string
           returns:
             - bool
@@ -99,13 +109,13 @@ symbols:
           params:
             - '[]Effect'
             - '[]StateDomain'
-            - '[]*EvidenceBundleV2'
+            - '[]*evidence.EvidenceBundle'
         - name: loadEvidenceBundles
           exported: false
           params:
             - string
           returns:
-            - '[]*EvidenceBundleV2'
+            - '[]*evidence.EvidenceBundle'
             - error
         - name: mapOpenQuestions
           exported: false
@@ -117,20 +127,20 @@ symbols:
           exported: false
           params:
             - '[]types.StateDomainSpec'
-            - '[]*EvidenceBundleV2'
+            - '[]*evidence.EvidenceBundle'
           returns:
             - '[]StateDomain'
         - name: mapTrustZones
           exported: false
           params:
             - '[]types.TrustZoneSpec'
-            - '[]*EvidenceBundleV2'
+            - '[]*evidence.EvidenceBundle'
           returns:
             - '[]TrustZone'
         - name: pkgBundleRefs
           exported: false
           params:
-            - '[]*EvidenceBundleV2'
+            - '[]*evidence.EvidenceBundle'
             - '[]string'
           returns:
             - '[]string'
@@ -144,54 +154,205 @@ symbols:
         - name: Boundaries
           kind: struct
           exported: true
+          fields:
+            - name: Process
+              type: '[]ProcessBoundary'
+            - name: Persistence
+              type: '[]PersistenceBoundary'
+            - name: Network
+              type: '*NetworkBoundary'
         - name: ConcurrencyDomain
           kind: struct
           exported: true
+          fields:
+            - name: ID
+              type: string
+            - name: Files
+              type: '[]string'
+            - name: EvidenceRefs
+              type: '[]string'
         - name: Effect
           kind: struct
           exported: true
+          fields:
+            - name: Kind
+              type: string
+            - name: Domain
+              type: string
+            - name: Via
+              type: string
+            - name: EvidenceRefs
+              type: '[]string'
         - name: Entrypoint
           kind: struct
           exported: true
+          fields:
+            - name: Package
+              type: string
+            - name: Symbol
+              type: string
+            - name: EvidenceRefs
+              type: '[]string'
         - name: Inventory
           kind: struct
           exported: true
+          fields:
+            - name: Packages
+              type: '[]PackageEntry'
+            - name: Entrypoints
+              type: '[]Entrypoint'
         - name: ModelInputs
           kind: struct
           exported: true
+          fields:
+            - name: BundleSetSHA256
+              type: string
         - name: NetworkBoundary
           kind: struct
           exported: true
+          fields:
+            - name: Outbound
+              type: '[]SymbolRef'
+            - name: EvidenceRefs
+              type: '[]string'
         - name: OpenQuestion
           kind: struct
           exported: true
+          fields:
+            - name: Question
+              type: string
+            - name: RelatedDomain
+              type: string
+            - name: MissingEvidence
+              type: '[]string'
         - name: PackageEntry
           kind: struct
           exported: true
+          fields:
+            - name: Name
+              type: string
+            - name: Files
+              type: '[]string'
+            - name: Imports
+              type: '[]string'
+            - name: EvidenceRefs
+              type: '[]string'
         - name: Persistence
           kind: struct
           exported: true
+          fields:
+            - name: Kind
+              type: string
+            - name: EvidenceRefs
+              type: '[]string'
         - name: PersistenceBoundary
           kind: struct
           exported: true
+          fields:
+            - name: Kind
+              type: string
+            - name: Writers
+              type: '[]SymbolRef'
+            - name: EvidenceRefs
+              type: '[]string'
         - name: ProcessBoundary
           kind: struct
           exported: true
+          fields:
+            - name: Kind
+              type: string
+            - name: EvidenceRefs
+              type: '[]string'
         - name: StateDomain
           kind: struct
           exported: true
+          fields:
+            - name: ID
+              type: string
+            - name: Description
+              type: string
+            - name: Owners
+              type: '[]string'
+            - name: Aggregate
+              type: string
+            - name: Representations
+              type: '[]string'
+            - name: PrimaryMutators
+              type: '[]string'
+            - name: PrimaryReaders
+              type: '[]string'
+            - name: Persistence
+              type: '*Persistence'
+            - name: EvidenceRefs
+              type: '[]string'
+            - name: Confidence
+              type: float64
         - name: SymbolRef
           kind: struct
           exported: true
+          fields:
+            - name: File
+              type: string
+            - name: EvidenceRefs
+              type: '[]string'
         - name: SystemModel
           kind: struct
           exported: true
+          fields:
+            - name: Version
+              type: int
+            - name: GeneratedAt
+              type: string
+            - name: Inputs
+              type: ModelInputs
+            - name: Inventory
+              type: Inventory
+            - name: StateDomains
+              type: '[]StateDomain'
+            - name: Boundaries
+              type: Boundaries
+            - name: Effects
+              type: '[]Effect'
+            - name: Transitions
+              type: '[]Transition'
+            - name: TrustZones
+              type: '[]TrustZone'
+            - name: ConcurrencyDomains
+              type: '[]ConcurrencyDomain'
+            - name: OpenQuestions
+              type: '[]OpenQuestion'
         - name: Transition
           kind: struct
           exported: true
+          fields:
+            - name: From
+              type: string
+            - name: To
+              type: string
+            - name: EvidenceRefs
+              type: '[]string'
         - name: TrustZone
           kind: struct
           exported: true
+          fields:
+            - name: ID
+              type: string
+            - name: Packages
+              type: '[]string'
+            - name: ExternalVia
+              type: '[]string'
+            - name: EvidenceRefs
+              type: '[]string'
+    constructors:
+        - GenerateSystemModel
+        - ReadSystemModel
+        - buildBoundaries
+        - buildConcurrencyDomains
+        - buildEffects
+        - buildInventory
+        - mapOpenQuestions
+        - mapStateDomains
+        - mapTrustZones
 calls:
     - from: GenerateSystemModel
       to: Format
@@ -233,6 +394,16 @@ calls:
       to: os.ReadFile
     - from: ReadSystemModel
       to: yaml.Unmarshal
+    - from: SystemModelUpToDate
+      to: ReadSystemModel
+    - from: SystemModelUpToDate
+      to: computeBundleSetHash
+    - from: SystemModelUpToDate
+      to: fmt.Errorf
+    - from: SystemModelUpToDate
+      to: len
+    - from: SystemModelUpToDate
+      to: loadEvidenceBundles
     - from: WriteSystemModel
       to: fmt.Errorf
     - from: WriteSystemModel
@@ -310,11 +481,11 @@ calls:
     - from: linkEffectsToDomains
       to: make
     - from: loadEvidenceBundles
-      to: LoadSettings
-    - from: loadEvidenceBundles
       to: filepath.WalkDir
     - from: loadEvidenceBundles
       to: fmt.Errorf
+    - from: loadEvidenceBundles
+      to: settings.LoadSettings
     - from: loadEvidenceBundles
       to: sort.Slice
     - from: loadEvidenceBundles.<anonymous>
@@ -385,3 +556,5 @@ signals:
     db_calls: false
     net_calls: false
     concurrency: false
+    yaml_io: true
+    json_io: false

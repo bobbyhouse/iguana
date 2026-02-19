@@ -1,4 +1,4 @@
-package main
+package model
 
 // system_model.go — System model generator (v1).
 //
@@ -12,8 +12,6 @@ package main
 // See INVARIANT.md INV-27..31.
 
 import (
-	b "iguana/baml_client"
-	"iguana/baml_client/types"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -24,6 +22,11 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	b "iguana/baml_client"
+	"iguana/baml_client/types"
+	"iguana/internal/evidence"
+	"iguana/internal/settings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -202,9 +205,9 @@ type OpenQuestion struct {
 
 // evidenceRef formats a reference per spec:
 //
-//	bundle:<path>@v<version>[#symbol:<name>|#signal:<name>]
-func evidenceRef(path string, version int, fragment string) string {
-	base := fmt.Sprintf("bundle:%s@v%d", path, version)
+//	bundle:<path>[#symbol:<name>|#signal:<name>]
+func evidenceRef(path string, _ int, fragment string) string {
+	base := "bundle:" + path
 	if fragment != "" {
 		return base + "#" + fragment
 	}
@@ -217,13 +220,13 @@ func evidenceRef(path string, version int, fragment string) string {
 
 // loadEvidenceBundles walks root for *.evidence.yaml files, unmarshals each,
 // and returns them sorted by File.Path (INV-31 requires deterministic hash).
-func loadEvidenceBundles(root string) ([]*EvidenceBundle, error) {
-	settings, err := LoadSettings(root)
+func loadEvidenceBundles(root string) ([]*evidence.EvidenceBundle, error) {
+	settings, err := settings.LoadSettings(root)
 	if err != nil {
 		return nil, fmt.Errorf("load settings: %w", err)
 	}
 
-	var bundles []*EvidenceBundle
+	var bundles []*evidence.EvidenceBundle
 
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -234,7 +237,7 @@ func loadEvidenceBundles(root string) ([]*EvidenceBundle, error) {
 			if path != root && (name == "vendor" || name == "testdata" || name == "examples" || name == "docs" || strings.HasPrefix(name, ".")) {
 				return filepath.SkipDir
 			}
-			// Skip directories denied by settings (INV-37).
+			// Skip directories denied by settings (INV-39).
 			if path != root {
 				rel, _ := filepath.Rel(root, path)
 				if settings.IsDenied(filepath.ToSlash(rel)) {
@@ -250,7 +253,7 @@ func loadEvidenceBundles(root string) ([]*EvidenceBundle, error) {
 		if strings.HasSuffix(d.Name(), "_test.go.evidence.yaml") {
 			return nil
 		}
-		// Skip evidence bundles whose source file is denied by settings (INV-37).
+		// Skip evidence bundles whose source file is denied by settings (INV-39).
 		// Bundle File.Path is relative with forward slashes (INV-23).
 		rel, _ := filepath.Rel(root, path)
 		rel = filepath.ToSlash(rel)
@@ -261,7 +264,7 @@ func loadEvidenceBundles(root string) ([]*EvidenceBundle, error) {
 		if err != nil {
 			return fmt.Errorf("read %s: %w", path, err)
 		}
-		var bundle EvidenceBundle
+		var bundle evidence.EvidenceBundle
 		if err := yaml.Unmarshal(data, &bundle); err != nil {
 			return fmt.Errorf("unmarshal %s: %w", path, err)
 		}
@@ -285,7 +288,7 @@ func loadEvidenceBundles(root string) ([]*EvidenceBundle, error) {
 
 // computeBundleSetHash computes a deterministic SHA256 over the set of bundles
 // by hashing the sorted "path@sha256" lines (INV-31).
-func computeBundleSetHash(bundles []*EvidenceBundle) string {
+func computeBundleSetHash(bundles []*evidence.EvidenceBundle) string {
 	lines := make([]string, len(bundles))
 	for i, b := range bundles {
 		lines[i] = b.File.Path + "@" + b.File.SHA256
@@ -300,7 +303,7 @@ func computeBundleSetHash(bundles []*EvidenceBundle) string {
 // hasSymbol checks if a bundle contains a symbol with the given name.
 // ---------------------------------------------------------------------------
 
-func hasSymbol(bundle *EvidenceBundle, name string) bool {
+func hasSymbol(bundle *evidence.EvidenceBundle, name string) bool {
 	for _, fn := range bundle.Symbols.Functions {
 		if fn.Name == name {
 			return true
@@ -315,7 +318,7 @@ func hasSymbol(bundle *EvidenceBundle, name string) bool {
 
 // buildInventory groups bundles by package name, assembles PackageEntry slices,
 // and identifies entrypoints (package main + main function).
-func buildInventory(bundles []*EvidenceBundle) Inventory {
+func buildInventory(bundles []*evidence.EvidenceBundle) Inventory {
 	// Group bundles by package name.
 	pkgFiles := make(map[string][]string)
 	pkgRefs := make(map[string][]string)
@@ -402,7 +405,7 @@ func buildInventory(bundles []*EvidenceBundle) Inventory {
 }
 
 // buildBoundaries derives persistence and network boundaries from signals.
-func buildBoundaries(bundles []*EvidenceBundle) Boundaries {
+func buildBoundaries(bundles []*evidence.EvidenceBundle) Boundaries {
 	var dbWriters []SymbolRef
 	var fsWriters []SymbolRef
 	var outbound []SymbolRef
@@ -457,7 +460,7 @@ func buildBoundaries(bundles []*EvidenceBundle) Boundaries {
 
 // buildEffects produces one Effect per signal kind per file.
 // Effects are sorted by kind then from_file (INV-28).
-func buildEffects(bundles []*EvidenceBundle) []Effect {
+func buildEffects(bundles []*evidence.EvidenceBundle) []Effect {
 	var effects []Effect
 
 	for _, bnd := range bundles {
@@ -510,7 +513,7 @@ func buildEffects(bundles []*EvidenceBundle) []Effect {
 }
 
 // buildConcurrencyDomains collects one domain per file with concurrency signals.
-func buildConcurrencyDomains(bundles []*EvidenceBundle) []ConcurrencyDomain {
+func buildConcurrencyDomains(bundles []*evidence.EvidenceBundle) []ConcurrencyDomain {
 	var domains []ConcurrencyDomain
 
 	for _, bnd := range bundles {
@@ -541,7 +544,7 @@ func buildConcurrencyDomains(bundles []*EvidenceBundle) []ConcurrencyDomain {
 // buildPackageSummaries groups bundles by package, ORs signals, collects
 // types/funcs/imports (capped at 10), and filters to packages with ≥1 signal.
 // At most 60 packages are sent to the LLM.
-func buildPackageSummaries(bundles []*EvidenceBundle) []types.PackageSummary {
+func buildPackageSummaries(bundles []*evidence.EvidenceBundle) []types.PackageSummary {
 	type pkgAccum struct {
 		files     []string
 		types     map[string]bool
@@ -655,7 +658,7 @@ func buildPackageSummaries(bundles []*EvidenceBundle) []types.PackageSummary {
 
 // pkgBundleRefs returns evidence refs for all bundles belonging to the given
 // package names.
-func pkgBundleRefs(bundles []*EvidenceBundle, pkgNames []string) []string {
+func pkgBundleRefs(bundles []*evidence.EvidenceBundle, pkgNames []string) []string {
 	pkgSet := make(map[string]bool, len(pkgNames))
 	for _, p := range pkgNames {
 		pkgSet[p] = true
@@ -671,7 +674,7 @@ func pkgBundleRefs(bundles []*EvidenceBundle, pkgNames []string) []string {
 }
 
 // mapStateDomains converts LLM StateDomainSpec slices to Go StateDomain slices.
-func mapStateDomains(specs []types.StateDomainSpec, bundles []*EvidenceBundle) []StateDomain {
+func mapStateDomains(specs []types.StateDomainSpec, bundles []*evidence.EvidenceBundle) []StateDomain {
 	var domains []StateDomain
 	for _, spec := range specs {
 		refs := pkgBundleRefs(bundles, spec.Owners)
@@ -697,7 +700,7 @@ func mapStateDomains(specs []types.StateDomainSpec, bundles []*EvidenceBundle) [
 // linkEffectsToDomains annotates each effect's Domain field by resolving
 // file → package → domain owner. Effects with no matching domain are left
 // with an empty Domain field.
-func linkEffectsToDomains(effects []Effect, domains []StateDomain, bundles []*EvidenceBundle) {
+func linkEffectsToDomains(effects []Effect, domains []StateDomain, bundles []*evidence.EvidenceBundle) {
 	// Build file path → package name.
 	fileToPkg := make(map[string]string, len(bundles))
 	for _, b := range bundles {
@@ -719,7 +722,7 @@ func linkEffectsToDomains(effects []Effect, domains []StateDomain, bundles []*Ev
 }
 
 // mapTrustZones converts LLM TrustZoneSpec slices to Go TrustZone slices.
-func mapTrustZones(specs []types.TrustZoneSpec, bundles []*EvidenceBundle) []TrustZone {
+func mapTrustZones(specs []types.TrustZoneSpec, bundles []*evidence.EvidenceBundle) []TrustZone {
 	var zones []TrustZone
 	for _, spec := range specs {
 		refs := pkgBundleRefs(bundles, spec.Packages)
@@ -837,6 +840,24 @@ func ReadSystemModel(path string) (*SystemModel, error) {
 		return nil, fmt.Errorf("unmarshal %s: %w", path, err)
 	}
 	return &model, nil
+}
+
+// SystemModelUpToDate returns true if the system model at outputPath was
+// generated from the same set of evidence bundles currently in root (INV-51).
+// Returns false (without error) if the file does not exist or cannot be read.
+func SystemModelUpToDate(root, outputPath string) (bool, error) {
+	bundles, err := loadEvidenceBundles(root)
+	if err != nil {
+		return false, fmt.Errorf("load bundles: %w", err)
+	}
+	if len(bundles) == 0 {
+		return false, nil
+	}
+	existing, err := ReadSystemModel(outputPath)
+	if err != nil {
+		return false, nil // doesn't exist or unreadable — not up to date
+	}
+	return existing.Inputs.BundleSetSHA256 == computeBundleSetHash(bundles), nil
 }
 
 // WriteSystemModel marshals model to YAML and writes it to outputPath.

@@ -1,4 +1,4 @@
-package main
+package settings
 
 // settings.go — iguana configuration loaded from .iguana/settings.yaml.
 //

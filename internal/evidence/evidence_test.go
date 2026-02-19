@@ -1,4 +1,4 @@
-package main
+package evidence
 
 // evidence_test.go — Tests for the semantic evidence bundle.
 //
@@ -632,11 +632,11 @@ func inner() {
 // TestDeterminism verifies that createEvidenceBundle produces identical YAML
 // output on two consecutive calls on the same file (INV-4 idempotency).
 func TestDeterminism(t *testing.T) {
-	b1, err := createEvidenceBundle("main.go")
+	b1, err := CreateEvidenceBundle("generate.go")
 	if err != nil {
 		t.Fatalf("first call: %v", err)
 	}
-	b2, err := createEvidenceBundle("main.go")
+	b2, err := CreateEvidenceBundle("generate.go")
 	if err != nil {
 		t.Fatalf("second call: %v", err)
 	}
@@ -658,7 +658,7 @@ func TestDeterminism(t *testing.T) {
 // TestNoPositionData verifies the YAML output does not contain position fields
 // like line numbers or column numbers (INV-5).
 func TestNoPositionData(t *testing.T) {
-	b, err := createEvidenceBundle("main.go")
+	b, err := CreateEvidenceBundle("generate.go")
 	if err != nil {
 		t.Fatalf("createEvidenceBundle: %v", err)
 	}
@@ -678,7 +678,7 @@ func TestNoPositionData(t *testing.T) {
 
 // TestSortedInvariants verifies all slices in the output are sorted (INV-7..12).
 func TestSortedInvariants(t *testing.T) {
-	b, err := createEvidenceBundle("main.go")
+	b, err := CreateEvidenceBundle("generate.go")
 	if err != nil {
 		t.Fatalf("createEvidenceBundle: %v", err)
 	}
@@ -734,7 +734,7 @@ func TestSortedInvariants(t *testing.T) {
 // TestCreateEvidenceBundle_OnMainGo runs a full v2 analysis on the existing
 // main.go in this package and checks structural correctness.
 func TestCreateEvidenceBundle_OnMainGo(t *testing.T) {
-	b, err := createEvidenceBundle("main.go")
+	b, err := CreateEvidenceBundle("generate.go")
 	if err != nil {
 		t.Fatalf("createEvidenceBundle: %v", err)
 	}
@@ -759,12 +759,12 @@ func TestCreateEvidenceBundle_OnMainGo(t *testing.T) {
 		t.Errorf("file.path contains backslash: %q", b.File.Path)
 	}
 
-	// Package name should be "main"
-	if b.Package.Name != "main" {
-		t.Errorf("Package.Name = %q, want %q", b.Package.Name, "main")
+	// Package name should be "evidence" (this is package evidence, not main)
+	if b.Package.Name != "evidence" {
+		t.Errorf("Package.Name = %q, want %q", b.Package.Name, "evidence")
 	}
 
-	// Must have at least one function (createEvidenceBundle exists in main.go)
+	// Must have at least one function (CreateEvidenceBundle exists in generate.go)
 	if len(b.Symbols.Functions) == 0 {
 		t.Error("expected at least one function in symbols")
 	}
@@ -773,12 +773,12 @@ func TestCreateEvidenceBundle_OnMainGo(t *testing.T) {
 // TestSHA256MatchesFile verifies the SHA256 in the bundle matches the actual
 // file bytes (INV-1).
 func TestSHA256MatchesFile(t *testing.T) {
-	b, err := createEvidenceBundle("main.go")
+	b, err := CreateEvidenceBundle("generate.go")
 	if err != nil {
 		t.Fatalf("createEvidenceBundle: %v", err)
 	}
 
-	raw, err := os.ReadFile("main.go")
+	raw, err := os.ReadFile("generate.go")
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
@@ -792,7 +792,7 @@ func TestSHA256MatchesFile(t *testing.T) {
 
 // TestWriteAndValidateRoundTrip verifies the write → validate cycle (INV-20..22).
 func TestWriteAndValidateRoundTrip(t *testing.T) {
-	b, err := createEvidenceBundle("main.go")
+	b, err := CreateEvidenceBundle("generate.go")
 	if err != nil {
 		t.Fatalf("createEvidenceBundle: %v", err)
 	}
@@ -802,7 +802,7 @@ func TestWriteAndValidateRoundTrip(t *testing.T) {
 	_ = os.Remove(outputPath) // clean any leftover from prior runs
 
 	// INV-21: writeEvidenceBundle writes the companion file
-	if err := writeEvidenceBundle(b); err != nil {
+	if _, err := WriteEvidenceBundle(b, false); err != nil {
 		t.Fatalf("writeEvidenceBundle: %v", err)
 	}
 	t.Cleanup(func() { os.Remove(outputPath) })
@@ -819,7 +819,7 @@ func TestWriteAndValidateRoundTrip(t *testing.T) {
 
 // TestValidateStale verifies that a bundle with a wrong hash is rejected (INV-2).
 func TestValidateStale(t *testing.T) {
-	b, err := createEvidenceBundle("main.go")
+	b, err := CreateEvidenceBundle("generate.go")
 	if err != nil {
 		t.Fatalf("createEvidenceBundle: %v", err)
 	}
@@ -855,7 +855,7 @@ func TestWalkAndGenerate_Basic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	written, errs := walkAndGenerate(root)
+	written, _, errs := WalkAndGenerate(root, false)
 	if len(errs) != 0 {
 		t.Fatalf("unexpected errors: %v", errs)
 	}
@@ -892,7 +892,7 @@ func TestWalkAndGenerate_SkipsVendor(t *testing.T) {
 	root := t.TempDir()
 
 	src := "package main\nfunc Main() {}\n"
-	mainFile := filepath.Join(root, "main.go")
+	mainFile := filepath.Join(root, "generate.go")
 	if err := os.WriteFile(mainFile, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -908,7 +908,7 @@ func TestWalkAndGenerate_SkipsVendor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	written, errs := walkAndGenerate(root)
+	written, _, errs := WalkAndGenerate(root, false)
 	if len(errs) != 0 {
 		t.Fatalf("unexpected errors: %v", errs)
 	}
@@ -941,7 +941,7 @@ func TestWalkAndGenerate_RelativePaths(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Remove(subFile + ".evidence.yaml") })
 
-	written, errs := walkAndGenerate(root)
+	written, _, errs := WalkAndGenerate(root, false)
 	if len(errs) != 0 {
 		t.Fatalf("unexpected errors: %v", errs)
 	}
@@ -1393,4 +1393,216 @@ func containsStr(slice []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// ---------------------------------------------------------------------------
+// CleanEvidenceBundles
+// ---------------------------------------------------------------------------
+
+// TestCleanEvidenceBundles verifies that CleanEvidenceBundles removes all
+// *.evidence.yaml files and returns the correct count, leaving other files alone.
+func TestCleanEvidenceBundles(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a mix of evidence files and unrelated files.
+	evFiles := []string{
+		"main.go.evidence.yaml",
+		"sub/store.go.evidence.yaml",
+	}
+	other := []string{
+		"main.go",
+		"system_model.yaml",
+	}
+	for _, name := range append(evFiles, other...) {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	removed, err := CleanEvidenceBundles(dir)
+	if err != nil {
+		t.Fatalf("CleanEvidenceBundles: %v", err)
+	}
+	if removed != len(evFiles) {
+		t.Errorf("removed %d files, want %d", removed, len(evFiles))
+	}
+
+	// Evidence files must be gone.
+	for _, name := range evFiles {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Errorf("expected %s to be removed", name)
+		}
+	}
+	// Other files must still exist.
+	for _, name := range other {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("expected %s to still exist: %v", name, err)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Skip logic (INV-50)
+// ---------------------------------------------------------------------------
+
+// TestWriteEvidenceBundle_SkipsIfUpToDate verifies INV-50: WriteEvidenceBundle
+// returns skipped=true without overwriting if the existing bundle has the
+// same file.sha256 as the new bundle.
+func TestWriteEvidenceBundle_SkipsIfUpToDate(t *testing.T) {
+	b, err := CreateEvidenceBundle("generate.go")
+	if err != nil {
+		t.Fatalf("CreateEvidenceBundle: %v", err)
+	}
+	outputPath := filepath.FromSlash(b.File.Path + ".evidence.yaml")
+	_ = os.Remove(outputPath)
+	t.Cleanup(func() { os.Remove(outputPath) })
+
+	// First write — must not be skipped.
+	skipped, err := WriteEvidenceBundle(b, false)
+	if err != nil {
+		t.Fatalf("first WriteEvidenceBundle: %v", err)
+	}
+	if skipped {
+		t.Error("first write should not be skipped")
+	}
+
+	// Record the mtime of the written file.
+	stat1, err := os.Stat(outputPath)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+
+	// Second write — same SHA256, must be skipped (file not overwritten).
+	skipped, err = WriteEvidenceBundle(b, false)
+	if err != nil {
+		t.Fatalf("second WriteEvidenceBundle: %v", err)
+	}
+	if !skipped {
+		t.Error("second write should be skipped (same SHA256)")
+	}
+
+	// File must not have been modified.
+	stat2, err := os.Stat(outputPath)
+	if err != nil {
+		t.Fatalf("stat after second write: %v", err)
+	}
+	if !stat2.ModTime().Equal(stat1.ModTime()) {
+		t.Error("file mtime changed on skipped write")
+	}
+}
+
+// TestWriteEvidenceBundle_ForceOverwrites verifies that --force bypasses the
+// skip check and always writes.
+func TestWriteEvidenceBundle_ForceOverwrites(t *testing.T) {
+	b, err := CreateEvidenceBundle("generate.go")
+	if err != nil {
+		t.Fatalf("CreateEvidenceBundle: %v", err)
+	}
+	outputPath := filepath.FromSlash(b.File.Path + ".evidence.yaml")
+	_ = os.Remove(outputPath)
+	t.Cleanup(func() { os.Remove(outputPath) })
+
+	// First write.
+	if _, err := WriteEvidenceBundle(b, false); err != nil {
+		t.Fatalf("first write: %v", err)
+	}
+	stat1, _ := os.Stat(outputPath)
+
+	// Force write — must not be skipped even though SHA is identical.
+	skipped, err := WriteEvidenceBundle(b, true)
+	if err != nil {
+		t.Fatalf("force write: %v", err)
+	}
+	if skipped {
+		t.Error("force write must not be skipped")
+	}
+	stat2, _ := os.Stat(outputPath)
+	if !stat2.ModTime().After(stat1.ModTime()) {
+		// ModTime resolution may be low on some filesystems; just confirm no error.
+		t.Log("note: mtime did not advance (filesystem resolution)")
+	}
+}
+
+// TestWalkAndGenerate_SkipsUnchanged verifies INV-50: a second WalkAndGenerate
+// call on the same directory (no source changes) reports all files as skipped.
+func TestWalkAndGenerate_SkipsUnchanged(t *testing.T) {
+	root := t.TempDir()
+	src := "package main\nfunc Hello() {}\n"
+	goFile := filepath.Join(root, "hello.go")
+	if err := os.WriteFile(goFile, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// First pass — must write.
+	written1, skipped1, errs := WalkAndGenerate(root, false)
+	if len(errs) != 0 {
+		t.Fatalf("first pass errors: %v", errs)
+	}
+	if written1 != 1 || skipped1 != 0 {
+		t.Errorf("first pass: written=%d skipped=%d, want 1/0", written1, skipped1)
+	}
+
+	// Second pass — same source, must skip.
+	written2, skipped2, errs := WalkAndGenerate(root, false)
+	if len(errs) != 0 {
+		t.Fatalf("second pass errors: %v", errs)
+	}
+	if written2 != 0 || skipped2 != 1 {
+		t.Errorf("second pass: written=%d skipped=%d, want 0/1", written2, skipped2)
+	}
+}
+
+// TestWalkAndGenerate_RegeneratesOnChange verifies that modifying a source
+// file causes WalkAndGenerate to regenerate its bundle (not skip it).
+func TestWalkAndGenerate_RegeneratesOnChange(t *testing.T) {
+	root := t.TempDir()
+	goFile := filepath.Join(root, "hello.go")
+	if err := os.WriteFile(goFile, []byte("package main\nfunc Hello() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// First pass — write.
+	WalkAndGenerate(root, false) //nolint:errcheck
+
+	// Modify the source file.
+	if err := os.WriteFile(goFile, []byte("package main\nfunc Hello() {}\nfunc World() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Second pass — source changed, must regenerate (written=1, skipped=0).
+	written, skipped, errs := WalkAndGenerate(root, false)
+	if len(errs) != 0 {
+		t.Fatalf("errors: %v", errs)
+	}
+	if written != 1 || skipped != 0 {
+		t.Errorf("after change: written=%d skipped=%d, want 1/0", written, skipped)
+	}
+}
+
+// TestWalkAndGenerate_ForceRegeneratesAll verifies that --force causes all
+// bundles to be regenerated even when source is unchanged.
+func TestWalkAndGenerate_ForceRegeneratesAll(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.go"), []byte("package main\nfunc A() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "b.go"), []byte("package main\nfunc B() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// First pass — write both.
+	WalkAndGenerate(root, false) //nolint:errcheck
+
+	// Force pass — must write both even though nothing changed.
+	written, skipped, errs := WalkAndGenerate(root, true)
+	if len(errs) != 0 {
+		t.Fatalf("errors: %v", errs)
+	}
+	if written != 2 || skipped != 0 {
+		t.Errorf("force pass: written=%d skipped=%d, want 2/0", written, skipped)
+	}
 }

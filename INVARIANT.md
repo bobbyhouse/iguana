@@ -192,3 +192,22 @@ These invariants must hold before and after every change to the implementation.
     a path containing "yaml" (e.g. `gopkg.in/yaml.v3`) or calls a `yaml.*` target.
     `signals.json_io` is true when the file imports `encoding/json` or calls a
     `json.*` target. Both are purely static (INV-18).
+
+## Skip / Cache Invariants
+
+50. **Evidence bundle skip**: `WriteEvidenceBundle` and `writeBundleAt` compare the
+    SHA256 of the new bundle against `file.sha256` in any existing companion
+    `.evidence.yaml`. If the hashes match and `force` is false, writing is skipped
+    and `skipped=true` is returned. The on-disk file is not touched. `WalkAndGenerate`
+    propagates this into separate `written` and `skipped` return counts.
+
+51. **System model skip**: `runSystemModel` calls `SystemModelUpToDate(root, outputPath)`
+    before invoking the LLM. If the existing `system_model.yaml` has an
+    `inputs.bundle_set_sha256` that matches `computeBundleSetHash` of the current
+    evidence bundles, generation is skipped entirely and a "up to date" message is
+    printed. If `force` is true this check is bypassed and the model is always
+    regenerated.
+
+52. **Force flag**: Both `iguana analyze` and `iguana system-model` accept `--force`
+    (`-f`). When present, skip checks (INV-50, INV-51) are bypassed and outputs are
+    always regenerated. The flag may appear anywhere in the argument list.

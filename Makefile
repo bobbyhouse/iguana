@@ -1,7 +1,7 @@
 .PHONY: build test generate
 
 build:
-	GOEXPERIMENT= go build -o bin/iguana .
+	GOEXPERIMENT= go build -o bin/iguana ./cmd/iguana/
 
 test:
 	GOEXPERIMENT= go test ./...

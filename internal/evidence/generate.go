@@ -1,4 +1,4 @@
-package main
+package evidence
 
 // evidence.go — Semantic evidence bundle.
 //
@@ -31,6 +31,8 @@ import (
 
 	"golang.org/x/tools/go/packages"
 	"gopkg.in/yaml.v3"
+
+	"iguana/internal/settings"
 )
 
 // ---------------------------------------------------------------------------
@@ -134,7 +136,7 @@ type Signals struct {
 // It first attempts to load the package with full type information via
 // golang.org/x/tools/go/packages. On failure it falls back to AST-only
 // analysis — call targets and type strings are then best-effort.
-func createEvidenceBundle(filePath string) (*EvidenceBundle, error) {
+func CreateEvidenceBundle(filePath string) (*EvidenceBundle, error) {
 	// Step 1 — integrity (same as v1): read raw bytes, compute hash.
 	fileBytes, err := os.ReadFile(filePath)
 	if err != nil {
@@ -186,17 +188,37 @@ func buildBundle(normalizedPath, hash string, file *ast.File, typesInfo *types.I
 
 // writeEvidenceBundle marshals the bundle to YAML and writes it to the
 // companion file `<bundle.File.Path>.evidence.yaml` (INV-14, INV-21).
-// The file is overwritten entirely on each call.
-func writeEvidenceBundle(bundle *EvidenceBundle) error {
+// If force is false and an existing bundle has the same file.sha256, the file
+// is not overwritten and skipped=true is returned (INV-50).
+func WriteEvidenceBundle(bundle *EvidenceBundle, force bool) (skipped bool, err error) {
+	outputPath := filepath.FromSlash(bundle.File.Path + ".evidence.yaml")
+	if !force && bundleUpToDate(outputPath, bundle.File.SHA256) {
+		return true, nil
+	}
 	data, err := yaml.Marshal(bundle)
 	if err != nil {
-		return fmt.Errorf("marshal: %w", err)
+		return false, fmt.Errorf("marshal: %w", err)
 	}
-	outputPath := filepath.FromSlash(bundle.File.Path + ".evidence.yaml")
 	if err := os.WriteFile(outputPath, data, 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", outputPath, err)
+		return false, fmt.Errorf("write %s: %w", outputPath, err)
 	}
-	return nil
+	return false, nil
+}
+
+// bundleUpToDate returns true if the existing evidence bundle at outputPath
+// was generated from a source file with the same SHA256 as newSHA256.
+// Returns false if the file does not exist, cannot be read, or has a
+// different hash (INV-50).
+func bundleUpToDate(outputPath, newSHA256 string) bool {
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		return false
+	}
+	var existing EvidenceBundle
+	if err := yaml.Unmarshal(data, &existing); err != nil {
+		return false
+	}
+	return existing.File.SHA256 == newSHA256
 }
 
 // validateEvidenceBundle re-hashes the source file and returns an error if
@@ -873,8 +895,12 @@ func extractSignals(meta PackageMeta, calls []Call, file *ast.File) Signals {
 //
 // Returns the number of bundles written and any errors encountered.
 // Errors are accumulated — processing continues even if individual files fail.
-func walkAndGenerate(root string) (written int, errs []error) {
-	settings, err := LoadSettings(root)
+// WalkAndGenerate walks root and generates evidence bundles for every .go
+// file. If force is false, files whose existing bundle SHA256 matches the
+// current source are skipped (INV-50). Returns counts of written and skipped
+// files.
+func WalkAndGenerate(root string, force bool) (written, skipped int, errs []error) {
+	s, err := settings.LoadSettings(root)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("load settings: %w", err))
 		return
@@ -902,7 +928,7 @@ func walkAndGenerate(root string) (written int, errs []error) {
 				return filepath.SkipDir
 			}
 			// Skip directories denied by settings (INV-39).
-			if settings.IsDenied(rel) {
+			if s.IsDenied(rel) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -915,7 +941,7 @@ func walkAndGenerate(root string) (written int, errs []error) {
 			return nil
 		}
 		// Skip files denied by settings (INV-39).
-		if settings.IsDenied(rel) {
+		if s.IsDenied(rel) {
 			return nil
 		}
 		dir := filepath.Dir(path)
@@ -956,11 +982,16 @@ func walkAndGenerate(root string) (written int, errs []error) {
 				continue
 			}
 
-			if err := writeBundleAt(bundle, absPath); err != nil {
+			sk, err := writeBundleAt(bundle, absPath, force)
+			if err != nil {
 				errs = append(errs, fmt.Errorf("write bundle %s: %w", relPath, err))
 				continue
 			}
-			written++
+			if sk {
+				skipped++
+			} else {
+				written++
+			}
 		}
 	}
 	return
@@ -1001,14 +1032,38 @@ func buildBundleForFile(absPath, relPath string, pkg *packages.Package, fset *to
 // writeBundleAt marshals bundle to YAML and writes it to absFilePath+".evidence.yaml".
 // The companion file is written using the absolute path so it lands next to the
 // source regardless of the caller's working directory (INV-14).
-func writeBundleAt(bundle *EvidenceBundle, absFilePath string) error {
+// If force is false and the existing bundle has the same SHA256, writing is
+// skipped and skipped=true is returned (INV-50).
+func writeBundleAt(bundle *EvidenceBundle, absFilePath string, force bool) (skipped bool, err error) {
+	outputPath := absFilePath + ".evidence.yaml"
+	if !force && bundleUpToDate(outputPath, bundle.File.SHA256) {
+		return true, nil
+	}
 	data, err := yaml.Marshal(bundle)
 	if err != nil {
-		return fmt.Errorf("marshal: %w", err)
+		return false, fmt.Errorf("marshal: %w", err)
 	}
-	outputPath := absFilePath + ".evidence.yaml"
 	if err := os.WriteFile(outputPath, data, 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", outputPath, err)
+		return false, fmt.Errorf("write %s: %w", outputPath, err)
 	}
-	return nil
+	return false, nil
+}
+
+// CleanEvidenceBundles removes all *.evidence.yaml files under root.
+// Returns the number of files removed.
+func CleanEvidenceBundles(root string) (int, error) {
+	var removed int
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && strings.HasSuffix(d.Name(), ".evidence.yaml") {
+			if err := os.Remove(path); err != nil {
+				return fmt.Errorf("remove %s: %w", path, err)
+			}
+			removed++
+		}
+		return nil
+	})
+	return removed, err
 }

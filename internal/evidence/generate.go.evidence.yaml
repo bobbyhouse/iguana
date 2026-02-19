@@ -1,9 +1,9 @@
 version: 2
 file:
-    path: evidence_v2.go
-    sha256: 2a97c0b4eb844cf141ab586e2cf9c8de9ca11014e7109462929dcd445b865a7f
+    path: internal/evidence/generate.go
+    sha256: 76de6ced53d36159964441b2c558bbc4ab6e6203db029b22d0b56b51654d8181
 package:
-    name: main
+    name: evidence
     imports:
         - path: crypto/sha256
         - path: encoding/hex
@@ -14,6 +14,7 @@ package:
         - path: go/types
         - path: golang.org/x/tools/go/packages
         - path: gopkg.in/yaml.v3
+        - path: iguana/internal/settings
         - path: io/fs
         - path: os
         - path: path/filepath
@@ -21,6 +22,37 @@ package:
         - path: strings
 symbols:
     functions:
+        - name: CleanEvidenceBundles
+          exported: true
+          params:
+            - string
+          returns:
+            - int
+            - error
+        - name: CreateEvidenceBundle
+          exported: true
+          params:
+            - string
+          returns:
+            - '*EvidenceBundle'
+            - error
+        - name: WalkAndGenerate
+          exported: true
+          params:
+            - string
+            - bool
+          returns:
+            - int
+            - int
+            - '[]error'
+        - name: WriteEvidenceBundle
+          exported: true
+          params:
+            - '*EvidenceBundle'
+            - bool
+          returns:
+            - bool
+            - error
         - name: buildBundle
           exported: false
           params:
@@ -30,7 +62,7 @@ symbols:
             - '*types.Info'
             - '*types.Package'
           returns:
-            - '*EvidenceBundleV2'
+            - '*EvidenceBundle'
         - name: buildBundleForFile
           exported: false
           params:
@@ -39,16 +71,22 @@ symbols:
             - '*packages.Package'
             - '*token.FileSet'
           returns:
-            - '*EvidenceBundleV2'
+            - '*EvidenceBundle'
             - error
-        - name: createEvidenceBundleV2
+        - name: bundleUpToDate
           exported: false
           params:
             - string
+            - string
           returns:
-            - '*EvidenceBundleV2'
-            - error
+            - bool
         - name: exprToString
+          exported: false
+          params:
+            - ast.Expr
+          returns:
+            - string
+        - name: extractBaseTypeName
           exported: false
           params:
             - ast.Expr
@@ -85,6 +123,12 @@ symbols:
             - '*ast.File'
           returns:
             - Signals
+        - name: extractStructFields
+          exported: false
+          params:
+            - '*ast.StructType'
+          returns:
+            - '[]FieldDecl'
         - name: extractSymbols
           exported: false
           params:
@@ -140,61 +184,239 @@ symbols:
             - ast.Expr
           returns:
             - string
-        - name: validateEvidenceBundleV2
+        - name: validateEvidenceBundle
           exported: false
           params:
-            - '*EvidenceBundleV2'
+            - '*EvidenceBundle'
           returns:
             - error
-        - name: walkAndGenerate
-          exported: false
-          params:
-            - string
-          returns:
-            - int
-            - '[]error'
         - name: writeBundleAt
           exported: false
           params:
-            - '*EvidenceBundleV2'
+            - '*EvidenceBundle'
             - string
+            - bool
           returns:
-            - error
-        - name: writeEvidenceBundleV2
-          exported: false
-          params:
-            - '*EvidenceBundleV2'
-          returns:
+            - bool
             - error
     types:
         - name: Call
           kind: struct
           exported: true
-        - name: EvidenceBundleV2
+          fields:
+            - name: From
+              type: string
+            - name: To
+              type: string
+        - name: EvidenceBundle
           kind: struct
           exported: true
+          fields:
+            - name: Version
+              type: int
+            - name: File
+              type: FileMeta
+            - name: Package
+              type: PackageMeta
+            - name: Symbols
+              type: Symbols
+            - name: Calls
+              type: '[]Call'
+            - name: Signals
+              type: Signals
+        - name: FieldDecl
+          kind: struct
+          exported: true
+          fields:
+            - name: Name
+              type: string
+            - name: TypeStr
+              type: string
+        - name: FileMeta
+          kind: struct
+          exported: true
+          fields:
+            - name: Path
+              type: string
+            - name: SHA256
+              type: string
         - name: Function
           kind: struct
           exported: true
+          fields:
+            - name: Name
+              type: string
+            - name: Exported
+              type: bool
+            - name: Receiver
+              type: string
+            - name: Params
+              type: '[]string'
+            - name: Returns
+              type: '[]string'
         - name: Import
           kind: struct
           exported: true
+          fields:
+            - name: Path
+              type: string
+            - name: Alias
+              type: string
         - name: PackageMeta
           kind: struct
           exported: true
+          fields:
+            - name: Name
+              type: string
+            - name: Imports
+              type: '[]Import'
         - name: Signals
           kind: struct
           exported: true
+          fields:
+            - name: FSReads
+              type: bool
+            - name: FSWrites
+              type: bool
+            - name: DBCalls
+              type: bool
+            - name: NetCalls
+              type: bool
+            - name: Concurrency
+              type: bool
+            - name: YAMLio
+              type: bool
+            - name: JSONio
+              type: bool
         - name: Symbols
           kind: struct
           exported: true
+          fields:
+            - name: Functions
+              type: '[]Function'
+            - name: Types
+              type: '[]TypeDecl'
+            - name: Variables
+              type: '[]VarDecl'
+            - name: Constants
+              type: '[]VarDecl'
+            - name: Constructors
+              type: '[]string'
         - name: TypeDecl
           kind: struct
           exported: true
+          fields:
+            - name: Name
+              type: string
+            - name: Kind
+              type: string
+            - name: Exported
+              type: bool
+            - name: Fields
+              type: '[]FieldDecl'
         - name: VarDecl
           kind: struct
           exported: true
+          fields:
+            - name: Name
+              type: string
+            - name: Exported
+              type: bool
+    constructors:
+        - CreateEvidenceBundle
+        - buildBundle
+        - buildBundleForFile
+        - extractCalls
+        - extractFunction
+        - extractPackageMeta
+        - extractSignals
+        - extractStructFields
+        - extractSymbols
 calls:
+    - from: CleanEvidenceBundles
+      to: filepath.WalkDir
+    - from: CleanEvidenceBundles.<anonymous>
+      to: d.IsDir
+    - from: CleanEvidenceBundles.<anonymous>
+      to: d.Name
+    - from: CleanEvidenceBundles.<anonymous>
+      to: fmt.Errorf
+    - from: CleanEvidenceBundles.<anonymous>
+      to: os.Remove
+    - from: CleanEvidenceBundles.<anonymous>
+      to: strings.HasSuffix
+    - from: CreateEvidenceBundle
+      to: buildBundle
+    - from: CreateEvidenceBundle
+      to: filepath.ToSlash
+    - from: CreateEvidenceBundle
+      to: fmt.Errorf
+    - from: CreateEvidenceBundle
+      to: hex.EncodeToString
+    - from: CreateEvidenceBundle
+      to: loadTypeInfoForFile
+    - from: CreateEvidenceBundle
+      to: os.ReadFile
+    - from: CreateEvidenceBundle
+      to: parser.ParseFile
+    - from: CreateEvidenceBundle
+      to: sha256.Sum256
+    - from: CreateEvidenceBundle
+      to: token.NewFileSet
+    - from: WalkAndGenerate
+      to: append
+    - from: WalkAndGenerate
+      to: buildBundleForFile
+    - from: WalkAndGenerate
+      to: filepath.Rel
+    - from: WalkAndGenerate
+      to: filepath.ToSlash
+    - from: WalkAndGenerate
+      to: filepath.WalkDir
+    - from: WalkAndGenerate
+      to: fmt.Errorf
+    - from: WalkAndGenerate
+      to: len
+    - from: WalkAndGenerate
+      to: loadPackageForDir
+    - from: WalkAndGenerate
+      to: make
+    - from: WalkAndGenerate
+      to: settings.LoadSettings
+    - from: WalkAndGenerate
+      to: sort.Strings
+    - from: WalkAndGenerate
+      to: writeBundleAt
+    - from: WalkAndGenerate.<anonymous>
+      to: append
+    - from: WalkAndGenerate.<anonymous>
+      to: d.IsDir
+    - from: WalkAndGenerate.<anonymous>
+      to: d.Name
+    - from: WalkAndGenerate.<anonymous>
+      to: filepath.Dir
+    - from: WalkAndGenerate.<anonymous>
+      to: filepath.Ext
+    - from: WalkAndGenerate.<anonymous>
+      to: filepath.Rel
+    - from: WalkAndGenerate.<anonymous>
+      to: filepath.ToSlash
+    - from: WalkAndGenerate.<anonymous>
+      to: s.IsDenied
+    - from: WalkAndGenerate.<anonymous>
+      to: strings.HasPrefix
+    - from: WalkAndGenerate.<anonymous>
+      to: strings.HasSuffix
+    - from: WriteEvidenceBundle
+      to: bundleUpToDate
+    - from: WriteEvidenceBundle
+      to: filepath.FromSlash
+    - from: WriteEvidenceBundle
+      to: fmt.Errorf
+    - from: WriteEvidenceBundle
+      to: os.WriteFile
+    - from: WriteEvidenceBundle
+      to: yaml.Marshal
     - from: buildBundle
       to: extractCalls
     - from: buildBundle
@@ -223,26 +445,14 @@ calls:
       to: sha256.Sum256
     - from: buildBundleForFile
       to: token.NewFileSet
-    - from: createEvidenceBundleV2
-      to: buildBundle
-    - from: createEvidenceBundleV2
-      to: filepath.ToSlash
-    - from: createEvidenceBundleV2
-      to: fmt.Errorf
-    - from: createEvidenceBundleV2
-      to: hex.EncodeToString
-    - from: createEvidenceBundleV2
-      to: loadTypeInfoForFile
-    - from: createEvidenceBundleV2
+    - from: bundleUpToDate
       to: os.ReadFile
-    - from: createEvidenceBundleV2
-      to: parser.ParseFile
-    - from: createEvidenceBundleV2
-      to: sha256.Sum256
-    - from: createEvidenceBundleV2
-      to: token.NewFileSet
+    - from: bundleUpToDate
+      to: yaml.Unmarshal
     - from: exprToString
       to: exprToString
+    - from: extractBaseTypeName
+      to: extractBaseTypeName
     - from: extractCalls
       to: ast.Inspect
     - from: extractCalls
@@ -309,6 +519,16 @@ calls:
       to: strings.Contains
     - from: extractSignals
       to: strings.HasPrefix
+    - from: extractStructFields
+      to: append
+    - from: extractStructFields
+      to: ast.IsExported
+    - from: extractStructFields
+      to: exprToString
+    - from: extractStructFields
+      to: extractBaseTypeName
+    - from: extractStructFields
+      to: len
     - from: extractSymbols
       to: String
     - from: extractSymbols
@@ -316,9 +536,17 @@ calls:
     - from: extractSymbols
       to: ast.IsExported
     - from: extractSymbols
+      to: extractBaseTypeName
+    - from: extractSymbols
       to: extractFunction
     - from: extractSymbols
+      to: extractStructFields
+    - from: extractSymbols
+      to: make
+    - from: extractSymbols
       to: sort.Slice
+    - from: extractSymbols
+      to: sort.Strings
     - from: extractSymbols
       to: typeKind
     - from: funcDeclName
@@ -367,73 +595,23 @@ calls:
       to: obj.Pkg
     - from: resolveCallTarget
       to: pkgName.Imported
-    - from: validateEvidenceBundleV2
+    - from: validateEvidenceBundle
       to: filepath.FromSlash
-    - from: validateEvidenceBundleV2
+    - from: validateEvidenceBundle
       to: fmt.Errorf
-    - from: validateEvidenceBundleV2
+    - from: validateEvidenceBundle
       to: hex.EncodeToString
-    - from: validateEvidenceBundleV2
+    - from: validateEvidenceBundle
       to: os.ReadFile
-    - from: validateEvidenceBundleV2
+    - from: validateEvidenceBundle
       to: sha256.Sum256
-    - from: walkAndGenerate
-      to: LoadSettings
-    - from: walkAndGenerate
-      to: append
-    - from: walkAndGenerate
-      to: buildBundleForFile
-    - from: walkAndGenerate
-      to: filepath.Rel
-    - from: walkAndGenerate
-      to: filepath.ToSlash
-    - from: walkAndGenerate
-      to: filepath.WalkDir
-    - from: walkAndGenerate
-      to: fmt.Errorf
-    - from: walkAndGenerate
-      to: len
-    - from: walkAndGenerate
-      to: loadPackageForDir
-    - from: walkAndGenerate
-      to: make
-    - from: walkAndGenerate
-      to: sort.Strings
-    - from: walkAndGenerate
-      to: writeBundleAt
-    - from: walkAndGenerate.<anonymous>
-      to: append
-    - from: walkAndGenerate.<anonymous>
-      to: d.IsDir
-    - from: walkAndGenerate.<anonymous>
-      to: d.Name
-    - from: walkAndGenerate.<anonymous>
-      to: filepath.Dir
-    - from: walkAndGenerate.<anonymous>
-      to: filepath.Ext
-    - from: walkAndGenerate.<anonymous>
-      to: filepath.Rel
-    - from: walkAndGenerate.<anonymous>
-      to: filepath.ToSlash
-    - from: walkAndGenerate.<anonymous>
-      to: settings.IsDenied
-    - from: walkAndGenerate.<anonymous>
-      to: strings.HasPrefix
-    - from: walkAndGenerate.<anonymous>
-      to: strings.HasSuffix
+    - from: writeBundleAt
+      to: bundleUpToDate
     - from: writeBundleAt
       to: fmt.Errorf
     - from: writeBundleAt
       to: os.WriteFile
     - from: writeBundleAt
-      to: yaml.Marshal
-    - from: writeEvidenceBundleV2
-      to: filepath.FromSlash
-    - from: writeEvidenceBundleV2
-      to: fmt.Errorf
-    - from: writeEvidenceBundleV2
-      to: os.WriteFile
-    - from: writeEvidenceBundleV2
       to: yaml.Marshal
 signals:
     fs_reads: true
@@ -441,3 +619,5 @@ signals:
     db_calls: false
     net_calls: false
     concurrency: false
+    yaml_io: true
+    json_io: false
