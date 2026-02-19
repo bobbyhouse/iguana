@@ -768,13 +768,17 @@ func walkAndGenerate(root string) (written int, errs []error) {
 			if path == root {
 				return nil
 			}
-			// Skip vendor, testdata, and hidden directories (INV-24).
-			if name == "vendor" || name == "testdata" || strings.HasPrefix(name, ".") {
+			// Skip vendor, testdata, examples, docs, and hidden directories (INV-24).
+			if name == "vendor" || name == "testdata" || name == "examples" || name == "docs" || strings.HasPrefix(name, ".") {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 		if filepath.Ext(name) != ".go" {
+			return nil
+		}
+		// Skip test files (INV-24).
+		if strings.HasSuffix(name, "_test.go") {
 			return nil
 		}
 		dir := filepath.Dir(path)

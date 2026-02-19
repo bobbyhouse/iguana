@@ -78,8 +78,9 @@ These invariants must hold before and after every change to the v2 implementatio
 23. **Relative paths in directory mode**: When `walkAndGenerate(root)` is used,
     `file.path` is relative to the provided root, using forward slashes.
 
-24. **Skipped directories**: `vendor/`, `testdata/`, and directories whose name
-    starts with `.` are skipped entirely during directory walking.
+24. **Skipped directories**: `vendor/`, `testdata/`, `examples/`, `docs/`, and
+    directories whose name starts with `.` are skipped entirely during directory
+    walking. Test files (`*_test.go`) are also skipped.
 
 25. **Deterministic walk order**: Directories and files within each directory
     are processed in sorted (lexicographic) order.

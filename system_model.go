@@ -229,7 +229,7 @@ func loadEvidenceBundles(root string) ([]*EvidenceBundleV2, error) {
 		}
 		if d.IsDir() {
 			name := d.Name()
-			if path != root && (name == "vendor" || name == "testdata" || strings.HasPrefix(name, ".")) {
+			if path != root && (name == "vendor" || name == "testdata" || name == "examples" || name == "docs" || strings.HasPrefix(name, ".")) {
 				return filepath.SkipDir
 			}
 			return nil
