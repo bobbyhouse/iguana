@@ -1,19 +1,13 @@
 package main
 
 import (
-	b "iguana/baml_client"
-	"iguana/baml_client/types"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"gopkg.in/yaml.v3"
 )
 
 // command describes a CLI subcommand.
@@ -173,17 +167,7 @@ func legacyFilePath(filePath string) error {
 		return nil
 	}
 
-	// v1: integrity only — prints to stdout.
-	evidence, err := createEvidenceBundle(filePath)
-	if err != nil {
-		return err
-	}
-	out, err := yaml.Marshal(evidence)
-	if err != nil {
-		return err
-	}
-	fmt.Print(string(out))
-	return nil
+	return fmt.Errorf("not a .go file or directory: %s", filePath)
 }
 
 // runSystemModel implements the "system-model" subcommand.
@@ -213,29 +197,29 @@ func runObsidianVault(args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: iguana obsidian-vault <model.yaml> [output-dir]")
 	}
-	// obsidian-vault functionality is not yet implemented.
-	return fmt.Errorf("obsidian-vault: not yet implemented")
+	modelPath := args[0]
+	outputDir := "obsidian-vault"
+	if len(args) >= 2 {
+		outputDir = args[1]
+	}
+	model, err := ReadSystemModel(modelPath)
+	if err != nil {
+		return err
+	}
+	if err := GenerateObsidianVault(model, outputDir); err != nil {
+		return err
+	}
+	fmt.Printf("wrote obsidian vault to %s\n", outputDir)
+	return nil
 }
 
 // runClean implements the "clean" subcommand.
 func runClean(args []string) error {
-	dir := "."
+	root := "."
 	if len(args) >= 1 {
-		dir = args[0]
+		root = args[0]
 	}
-	var removed int
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() && strings.HasSuffix(path, ".evidence.yaml") {
-			if removeErr := os.Remove(path); removeErr != nil {
-				return removeErr
-			}
-			removed++
-		}
-		return nil
-	})
+	removed, err := cleanEvidenceBundles(root)
 	if err != nil {
 		return err
 	}
@@ -243,41 +227,23 @@ func runClean(args []string) error {
 	return nil
 }
 
-// categorizeFile reads a file and determines its state type.
-func categorizeFile(filePath string) (types.State, error) {
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return "", err
-	}
-
-	ctx := context.Background()
-	return b.TypeOfState(ctx, string(content))
-}
-
-type EvidenceBundle struct {
-	Version int      `yaml:"version"`
-	File    FileMeta `yaml:"file"`
-}
-
-type FileMeta struct {
-	Path   string `yaml:"path"`
-	SHA256 string `yaml:"sha256"`
-}
-
-func createEvidenceBundle(filePath string) (EvidenceBundle, error) {
-	b, err := os.ReadFile(filePath)
-	if err != nil {
-		return EvidenceBundle{}, err
-	}
-
-	sum := sha256.Sum256(b)
-	return EvidenceBundle{
-		Version: 1,
-		File: FileMeta{
-			Path:   filePath,
-			SHA256: hex.EncodeToString(sum[:]),
-		},
-	}, nil
+// cleanEvidenceBundles removes all *.evidence.yaml files under root.
+// Returns the number of files removed.
+func cleanEvidenceBundles(root string) (int, error) {
+	var removed int
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && strings.HasSuffix(d.Name(), ".evidence.yaml") {
+			if err := os.Remove(path); err != nil {
+				return fmt.Errorf("remove %s: %w", path, err)
+			}
+			removed++
+		}
+		return nil
+	})
+	return removed, err
 }
 
 func main() {
