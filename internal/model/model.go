@@ -205,9 +205,9 @@ type OpenQuestion struct {
 
 // evidenceRef formats a reference per spec:
 //
-//	bundle:<path>[#symbol:<name>|#signal:<name>]
-func evidenceRef(path string, _ int, fragment string) string {
-	base := "bundle:" + path
+//	bundle:<path>@v<version>[#symbol:<name>|#signal:<name>]
+func evidenceRef(path string, version int, fragment string) string {
+	base := fmt.Sprintf("bundle:%s@v%d", path, version)
 	if fragment != "" {
 		return base + "#" + fragment
 	}
