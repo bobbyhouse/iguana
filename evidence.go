@@ -70,10 +70,11 @@ type Import struct {
 
 // Symbols groups all top-level declarations in the file.
 type Symbols struct {
-	Functions []Function `yaml:"functions,omitempty"`
-	Types     []TypeDecl `yaml:"types,omitempty"`
-	Variables []VarDecl  `yaml:"variables,omitempty"`
-	Constants []VarDecl  `yaml:"constants,omitempty"`
+	Functions    []Function `yaml:"functions,omitempty"`
+	Types        []TypeDecl `yaml:"types,omitempty"`
+	Variables    []VarDecl  `yaml:"variables,omitempty"`
+	Constants    []VarDecl  `yaml:"constants,omitempty"`
+	Constructors []string   `yaml:"constructors,omitempty"` // INV-45: functions returning package-local types
 }
 
 // Function describes a top-level function or method declaration.
@@ -85,11 +86,18 @@ type Function struct {
 	Returns  []string `yaml:"returns,omitempty"`
 }
 
+// FieldDecl describes a single exported field of a struct type.
+type FieldDecl struct {
+	Name    string `yaml:"name"`
+	TypeStr string `yaml:"type"`
+}
+
 // TypeDecl describes a top-level type declaration.
 type TypeDecl struct {
-	Name     string `yaml:"name"`
-	Kind     string `yaml:"kind"` // "struct" | "interface" | "alias"
-	Exported bool   `yaml:"exported"`
+	Name     string      `yaml:"name"`
+	Kind     string      `yaml:"kind"` // "struct" | "interface" | "alias"
+	Exported bool        `yaml:"exported"`
+	Fields   []FieldDecl `yaml:"fields,omitempty"` // INV-46: struct only, declaration order
 }
 
 // VarDecl describes a top-level variable or constant declaration.
@@ -112,6 +120,8 @@ type Signals struct {
 	DBCalls     bool `yaml:"db_calls"`
 	NetCalls    bool `yaml:"net_calls"`
 	Concurrency bool `yaml:"concurrency"`
+	YAMLio      bool `yaml:"yaml_io"` // INV-47: imports yaml library or calls yaml.*
+	JSONio      bool `yaml:"json_io"` // INV-47: imports encoding/json or calls json.*
 }
 
 // ---------------------------------------------------------------------------
@@ -337,11 +347,16 @@ func extractSymbols(file *ast.File, typesInfo *types.Info, pkg *types.Package, q
 			case "type":
 				for _, spec := range d.Specs {
 					ts := spec.(*ast.TypeSpec)
-					syms.Types = append(syms.Types, TypeDecl{
+					td := TypeDecl{
 						Name:     ts.Name.Name,
 						Kind:     typeKind(ts.Type),
 						Exported: ast.IsExported(ts.Name.Name),
-					})
+					}
+					// INV-46: extract exported fields for struct types.
+					if st, ok := ts.Type.(*ast.StructType); ok {
+						td.Fields = extractStructFields(st)
+					}
+					syms.Types = append(syms.Types, td)
 				}
 			case "var":
 				for _, spec := range d.Specs {
@@ -371,6 +386,32 @@ func extractSymbols(file *ast.File, typesInfo *types.Info, pkg *types.Package, q
 	sort.Slice(syms.Types, func(i, j int) bool { return syms.Types[i].Name < syms.Types[j].Name })
 	sort.Slice(syms.Variables, func(i, j int) bool { return syms.Variables[i].Name < syms.Variables[j].Name })
 	sort.Slice(syms.Constants, func(i, j int) bool { return syms.Constants[i].Name < syms.Constants[j].Name })
+
+	// INV-45: collect constructors — top-level functions whose return types
+	// include at least one type declared in this file.
+	typeNames := make(map[string]bool)
+	for _, decl := range file.Decls {
+		if gd, ok := decl.(*ast.GenDecl); ok && gd.Tok.String() == "type" {
+			for _, spec := range gd.Specs {
+				ts := spec.(*ast.TypeSpec)
+				typeNames[ts.Name.Name] = true
+			}
+		}
+	}
+	for _, decl := range file.Decls {
+		fd, ok := decl.(*ast.FuncDecl)
+		if !ok || fd.Recv != nil || fd.Type.Results == nil {
+			continue // skip methods and functions with no return values
+		}
+		for _, field := range fd.Type.Results.List {
+			if name := extractBaseTypeName(field.Type); name != "" && typeNames[name] {
+				syms.Constructors = append(syms.Constructors, fd.Name.Name)
+				break // count each function only once
+			}
+		}
+	}
+	sort.Strings(syms.Constructors)
+
 	return syms
 }
 
@@ -446,6 +487,48 @@ func typeKind(expr ast.Expr) string {
 		return "interface"
 	default:
 		return "alias"
+	}
+}
+
+// extractStructFields collects exported fields from an ast.StructType in
+// declaration order (INV-46). Embedded types use their base type name as the
+// field name. Unexported fields are skipped.
+func extractStructFields(st *ast.StructType) []FieldDecl {
+	var fields []FieldDecl
+	for _, field := range st.Fields.List {
+		typeStr := exprToString(field.Type)
+		if len(field.Names) == 0 {
+			// Embedded field: use base type name as field name.
+			name := extractBaseTypeName(field.Type)
+			if name == "" || !ast.IsExported(name) {
+				continue
+			}
+			fields = append(fields, FieldDecl{Name: name, TypeStr: typeStr})
+		} else {
+			for _, n := range field.Names {
+				if !ast.IsExported(n.Name) {
+					continue
+				}
+				fields = append(fields, FieldDecl{Name: n.Name, TypeStr: typeStr})
+			}
+		}
+	}
+	return fields
+}
+
+// extractBaseTypeName unwraps pointer (*T) and slice ([]T) wrappers to find
+// the innermost named identifier. Returns "" for maps, channels, and other
+// complex composite types.
+func extractBaseTypeName(expr ast.Expr) string {
+	switch e := expr.(type) {
+	case *ast.StarExpr:
+		return extractBaseTypeName(e.X)
+	case *ast.ArrayType:
+		return extractBaseTypeName(e.Elt)
+	case *ast.Ident:
+		return e.Name
+	default:
+		return ""
 	}
 }
 
@@ -745,6 +828,35 @@ func extractSignals(meta PackageMeta, calls []Call, file *ast.File) Signals {
 			}
 			return true
 		})
+	}
+
+	// yaml_io: imports a yaml library (path contains "yaml") or calls yaml.* (INV-47).
+	for path := range importSet {
+		if strings.Contains(path, "yaml") {
+			sig.YAMLio = true
+			break
+		}
+	}
+	if !sig.YAMLio {
+		for target := range callSet {
+			if strings.HasPrefix(target, "yaml.") {
+				sig.YAMLio = true
+				break
+			}
+		}
+	}
+
+	// json_io: encoding/json import or calls json.* (INV-47).
+	if importSet["encoding/json"] {
+		sig.JSONio = true
+	}
+	if !sig.JSONio {
+		for target := range callSet {
+			if strings.HasPrefix(target, "json.") {
+				sig.JSONio = true
+				break
+			}
+		}
 	}
 
 	return sig

@@ -137,3 +137,20 @@ These invariants must hold before and after every change to the v2 implementatio
 38. **Commands slice is the single source of truth**: All registered commands are
     in the `commands` slice. The dispatch loop, help listing, and `help <cmd>`
     all derive from the same slice — never hardcoded names.
+
+## Evidence Enrichment Invariants
+
+45. **Constructors are functions returning package-local types**: `symbols.constructors`
+    lists every top-level function (not method) whose return types include at least
+    one type declared in the same file. Sorted lexicographically. Absent (omitempty)
+    when empty.
+
+46. **Struct fields captured**: For struct TypeDecls, `fields` contains one entry per
+    exported field in declaration order. Embedded exported types appear using their
+    base type name as the field name. Non-struct kinds have no `fields` entry
+    (omitempty). Unexported fields are never included.
+
+47. **Serialization format signals**: `signals.yaml_io` is true when the file imports
+    a path containing "yaml" (e.g. `gopkg.in/yaml.v3`) or calls a `yaml.*` target.
+    `signals.json_io` is true when the file imports `encoding/json` or calls a
+    `json.*` target. Both are purely static (INV-18).

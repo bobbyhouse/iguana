@@ -531,7 +531,7 @@ func f() { _ = 1 + 2 }
 	calls := extractCalls(f, noTypeInfo, noTypePkg, nullQualifier)
 	sig := extractSignals(meta, calls, f)
 
-	if sig.FSReads || sig.FSWrites || sig.DBCalls || sig.NetCalls || sig.Concurrency {
+	if sig.FSReads || sig.FSWrites || sig.DBCalls || sig.NetCalls || sig.Concurrency || sig.YAMLio || sig.JSONio {
 		t.Errorf("expected all signals false, got %+v", sig)
 	}
 }
@@ -970,6 +970,331 @@ func TestWalkAndGenerate_RelativePaths(t *testing.T) {
 	// Must use forward slashes (INV-13).
 	if strings.Contains(bundle.File.Path, "\\") {
 		t.Errorf("file.path contains backslash: %q", bundle.File.Path)
+	}
+}
+
+// --------------------------------------------------------------------------
+// Unit tests — extractSymbols constructors (INV-45)
+// --------------------------------------------------------------------------
+
+// TestConstructorsExtracted verifies that a function returning a package-local
+// type is included in symbols.constructors (INV-45).
+func TestConstructorsExtracted(t *testing.T) {
+	src := `package pkg
+
+type Widget struct{}
+
+func NewWidget() *Widget { return nil }
+func helper() int       { return 0 }
+`
+	f := parseSource(t, src)
+	syms := extractSymbols(f, noTypeInfo, noTypePkg, nullQualifier)
+
+	if len(syms.Constructors) != 1 {
+		t.Fatalf("expected 1 constructor, got %d: %v", len(syms.Constructors), syms.Constructors)
+	}
+	if syms.Constructors[0] != "NewWidget" {
+		t.Errorf("constructor = %q, want %q", syms.Constructors[0], "NewWidget")
+	}
+}
+
+// TestConstructors_SliceReturn verifies that a function returning []LocalType
+// is also recognized as a constructor (INV-45).
+func TestConstructors_SliceReturn(t *testing.T) {
+	src := `package pkg
+
+type Item struct{}
+
+func NewItems() []Item { return nil }
+`
+	f := parseSource(t, src)
+	syms := extractSymbols(f, noTypeInfo, noTypePkg, nullQualifier)
+
+	if !containsStr(syms.Constructors, "NewItems") {
+		t.Errorf("expected NewItems in constructors, got %v", syms.Constructors)
+	}
+}
+
+// TestConstructors_MethodNotConstructor verifies that methods (with receivers)
+// are never listed as constructors (INV-45).
+func TestConstructors_MethodNotConstructor(t *testing.T) {
+	src := `package pkg
+
+type Foo struct{}
+
+func (f *Foo) Clone() *Foo { return nil }
+`
+	f := parseSource(t, src)
+	syms := extractSymbols(f, noTypeInfo, noTypePkg, nullQualifier)
+
+	if len(syms.Constructors) != 0 {
+		t.Errorf("expected no constructors, got %v", syms.Constructors)
+	}
+}
+
+// TestConstructors_NoLocalTypes verifies that constructors is empty when the
+// file declares no types (INV-45).
+func TestConstructors_NoLocalTypes(t *testing.T) {
+	src := `package pkg
+
+func New() int { return 0 }
+`
+	f := parseSource(t, src)
+	syms := extractSymbols(f, noTypeInfo, noTypePkg, nullQualifier)
+
+	if len(syms.Constructors) != 0 {
+		t.Errorf("expected no constructors, got %v", syms.Constructors)
+	}
+}
+
+// TestConstructors_Sorted verifies constructors are sorted lexicographically
+// (INV-45 + INV-28 consistency).
+func TestConstructors_Sorted(t *testing.T) {
+	src := `package pkg
+
+type T struct{}
+
+func Zebra() *T  { return nil }
+func Alpha() *T  { return nil }
+func Middle() *T { return nil }
+`
+	f := parseSource(t, src)
+	syms := extractSymbols(f, noTypeInfo, noTypePkg, nullQualifier)
+
+	for i := 1; i < len(syms.Constructors); i++ {
+		if syms.Constructors[i] < syms.Constructors[i-1] {
+			t.Errorf("constructors not sorted at %d: %q < %q",
+				i, syms.Constructors[i], syms.Constructors[i-1])
+		}
+	}
+	if len(syms.Constructors) != 3 {
+		t.Errorf("expected 3 constructors, got %d: %v", len(syms.Constructors), syms.Constructors)
+	}
+}
+
+// --------------------------------------------------------------------------
+// Unit tests — extractSymbols struct fields (INV-46)
+// --------------------------------------------------------------------------
+
+// TestStructFieldsExtracted verifies exported struct fields are captured in
+// declaration order with correct TypeStr values (INV-46).
+func TestStructFieldsExtracted(t *testing.T) {
+	src := `package pkg
+
+type Person struct {
+	Name    string
+	Age     int
+	Address *Address
+}
+
+type Address struct{}
+`
+	f := parseSource(t, src)
+	syms := extractSymbols(f, noTypeInfo, noTypePkg, nullQualifier)
+
+	// Find Person type.
+	var person *TypeDecl
+	for i := range syms.Types {
+		if syms.Types[i].Name == "Person" {
+			person = &syms.Types[i]
+		}
+	}
+	if person == nil {
+		t.Fatal("Person type not found")
+	}
+	if person.Kind != "struct" {
+		t.Errorf("Kind = %q, want %q", person.Kind, "struct")
+	}
+	if len(person.Fields) != 3 {
+		t.Fatalf("expected 3 fields, got %d: %v", len(person.Fields), person.Fields)
+	}
+	// Declaration order is preserved (INV-46).
+	wantFields := []struct{ name, typeStr string }{
+		{"Name", "string"},
+		{"Age", "int"},
+		{"Address", "*Address"},
+	}
+	for i, want := range wantFields {
+		got := person.Fields[i]
+		if got.Name != want.name || got.TypeStr != want.typeStr {
+			t.Errorf("Fields[%d] = {%q, %q}, want {%q, %q}",
+				i, got.Name, got.TypeStr, want.name, want.typeStr)
+		}
+	}
+}
+
+// TestStructFields_UnexportedSkipped verifies that unexported fields are not
+// included in TypeDecl.Fields (INV-46).
+func TestStructFields_UnexportedSkipped(t *testing.T) {
+	src := `package pkg
+
+type Mixed struct {
+	Exported   string
+	unexported int
+}
+`
+	f := parseSource(t, src)
+	syms := extractSymbols(f, noTypeInfo, noTypePkg, nullQualifier)
+
+	var mixed *TypeDecl
+	for i := range syms.Types {
+		if syms.Types[i].Name == "Mixed" {
+			mixed = &syms.Types[i]
+		}
+	}
+	if mixed == nil {
+		t.Fatal("Mixed type not found")
+	}
+	if len(mixed.Fields) != 1 {
+		t.Fatalf("expected 1 exported field, got %d: %v", len(mixed.Fields), mixed.Fields)
+	}
+	if mixed.Fields[0].Name != "Exported" {
+		t.Errorf("field name = %q, want %q", mixed.Fields[0].Name, "Exported")
+	}
+}
+
+// TestStructFields_NonStructNoFields verifies that interface and alias TypeDecls
+// have no Fields entry (INV-46).
+func TestStructFields_NonStructNoFields(t *testing.T) {
+	src := `package pkg
+
+type Doer interface{ Do() }
+type ID = string
+`
+	f := parseSource(t, src)
+	syms := extractSymbols(f, noTypeInfo, noTypePkg, nullQualifier)
+
+	for _, td := range syms.Types {
+		if len(td.Fields) != 0 {
+			t.Errorf("type %q (kind=%s) should have no fields, got %v",
+				td.Name, td.Kind, td.Fields)
+		}
+	}
+}
+
+// TestStructFields_EmbeddedExported verifies that embedded exported types are
+// captured with their type name as the field name (INV-46).
+func TestStructFields_EmbeddedExported(t *testing.T) {
+	src := `package pkg
+
+type Base struct{}
+
+type Child struct {
+	Base
+	Name string
+}
+`
+	f := parseSource(t, src)
+	syms := extractSymbols(f, noTypeInfo, noTypePkg, nullQualifier)
+
+	var child *TypeDecl
+	for i := range syms.Types {
+		if syms.Types[i].Name == "Child" {
+			child = &syms.Types[i]
+		}
+	}
+	if child == nil {
+		t.Fatal("Child type not found")
+	}
+	// Both embedded Base and explicit Name should appear.
+	nameMap := make(map[string]string)
+	for _, f := range child.Fields {
+		nameMap[f.Name] = f.TypeStr
+	}
+	if nameMap["Base"] == "" {
+		t.Errorf("embedded Base field not captured; fields: %v", child.Fields)
+	}
+	if nameMap["Name"] == "" {
+		t.Errorf("Name field not captured; fields: %v", child.Fields)
+	}
+}
+
+// --------------------------------------------------------------------------
+// Unit tests — extractSignals yaml_io / json_io (INV-47)
+// --------------------------------------------------------------------------
+
+// TestExtractSignals_YAMLImport verifies yaml_io is set when a yaml library
+// is imported (INV-47).
+func TestExtractSignals_YAMLImport(t *testing.T) {
+	src := `package pkg
+import _ "gopkg.in/yaml.v3"
+func f() {}
+`
+	f := parseSource(t, src)
+	meta := extractPackageMeta(f)
+	calls := extractCalls(f, noTypeInfo, noTypePkg, nullQualifier)
+	sig := extractSignals(meta, calls, f)
+
+	if !sig.YAMLio {
+		t.Error("expected yaml_io = true when gopkg.in/yaml.v3 is imported")
+	}
+}
+
+// TestExtractSignals_YAMLCall verifies yaml_io is set when a yaml.* call
+// appears in the call list (INV-47).
+func TestExtractSignals_YAMLCall(t *testing.T) {
+	src := `package pkg
+import "gopkg.in/yaml.v3"
+func f() { yaml.Marshal(nil) }
+`
+	f := parseSource(t, src)
+	meta := extractPackageMeta(f)
+	calls := extractCalls(f, noTypeInfo, noTypePkg, nullQualifier)
+	sig := extractSignals(meta, calls, f)
+
+	if !sig.YAMLio {
+		t.Error("expected yaml_io = true when yaml.Marshal is called")
+	}
+}
+
+// TestExtractSignals_JSONImport verifies json_io is set when encoding/json
+// is imported (INV-47).
+func TestExtractSignals_JSONImport(t *testing.T) {
+	src := `package pkg
+import _ "encoding/json"
+func f() {}
+`
+	f := parseSource(t, src)
+	meta := extractPackageMeta(f)
+	calls := extractCalls(f, noTypeInfo, noTypePkg, nullQualifier)
+	sig := extractSignals(meta, calls, f)
+
+	if !sig.JSONio {
+		t.Error("expected json_io = true when encoding/json is imported")
+	}
+}
+
+// TestExtractSignals_JSONCall verifies json_io is set when a json.* call
+// appears in the call list (INV-47).
+func TestExtractSignals_JSONCall(t *testing.T) {
+	src := `package pkg
+import "encoding/json"
+func f() { json.Marshal(nil) }
+`
+	f := parseSource(t, src)
+	meta := extractPackageMeta(f)
+	calls := extractCalls(f, noTypeInfo, noTypePkg, nullQualifier)
+	sig := extractSignals(meta, calls, f)
+
+	if !sig.JSONio {
+		t.Error("expected json_io = true when json.Marshal is called")
+	}
+}
+
+// TestExtractSignals_YAMLNotJSON verifies yaml_io does not imply json_io and
+// vice versa (INV-47 independence).
+func TestExtractSignals_YAMLNotJSON(t *testing.T) {
+	src := `package pkg
+import _ "gopkg.in/yaml.v3"
+func f() {}
+`
+	f := parseSource(t, src)
+	meta := extractPackageMeta(f)
+	calls := extractCalls(f, noTypeInfo, noTypePkg, nullQualifier)
+	sig := extractSignals(meta, calls, f)
+
+	if sig.JSONio {
+		t.Error("expected json_io = false when only yaml is used")
 	}
 }
 
