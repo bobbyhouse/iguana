@@ -203,7 +203,7 @@ type OpenQuestion struct {
 // Evidence ref helper (INV-30)
 // ---------------------------------------------------------------------------
 
-// evidenceRef formats a reference per spec:
+// evidenceRef formats a reference per spec (INV-30):
 //
 //	bundle:<path>@v<version>[#symbol:<name>|#signal:<name>]
 func evidenceRef(path string, version int, fragment string) string {
