@@ -104,7 +104,7 @@ These invariants must hold before and after every change to the implementation.
     `evidence_refs` list, tracing back to the bundles that justified it.
 
 30. **Evidence ref format**: Evidence refs follow exactly:
-    `bundle:<path>@v<version>[#symbol:<name>|#signal:<name>]`
+    `bundle:<path>[#symbol:<name>|#signal:<name>]`
     — no other formats are valid.
 
 31. **bundle_set_sha256 derivation**: `inputs.bundle_set_sha256` is a SHA256

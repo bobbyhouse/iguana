@@ -544,11 +544,80 @@ func buildConcurrencyDomains(bundles []*evidence.EvidenceBundle) []ConcurrencyDo
 // buildPackageSummaries groups bundles by package, ORs signals, collects
 // types/funcs/imports (capped at 10), and filters to packages with ≥1 signal.
 // At most 60 packages are sent to the LLM.
-func buildPackageSummaries(bundles []*evidence.EvidenceBundle) []types.PackageSummary {
+// readModuleName reads the module name from go.mod in root.
+// Returns "" if go.mod is absent or unparseable.
+func readModuleName(root string) string {
+	data, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.SplitN(string(data), "\n", 10) {
+		if strings.HasPrefix(line, "module ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "module "))
+		}
+	}
+	return ""
+}
+
+// formatTypeDesc returns a compact description of a type or function for the LLM.
+// Structs: "TypeName{Field1:Type1, Field2:Type2}"
+// Functions: "FuncName(Type1, Type2) ReturnType" or "(Type1, Type2)" for multi-return
+func formatStructDesc(td evidence.TypeDecl) string {
+	if td.Kind != "struct" || len(td.Fields) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString(td.Name)
+	sb.WriteString("{")
+	for i, f := range td.Fields {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(f.Name)
+		sb.WriteString(":")
+		sb.WriteString(f.TypeStr)
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
+func formatFuncDesc(fn evidence.Function) string {
+	if !fn.Exported || fn.Receiver != "" {
+		return "" // skip unexported and methods; focus on top-level functions
+	}
+	var sb strings.Builder
+	sb.WriteString(fn.Name)
+	sb.WriteString("(")
+	for i, p := range fn.Params {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(p)
+	}
+	sb.WriteString(")")
+	if len(fn.Returns) == 1 {
+		sb.WriteString(" ")
+		sb.WriteString(fn.Returns[0])
+	} else if len(fn.Returns) > 1 {
+		sb.WriteString(" (")
+		for i, r := range fn.Returns {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(r)
+		}
+		sb.WriteString(")")
+	}
+	return sb.String()
+}
+
+func buildPackageSummaries(bundles []*evidence.EvidenceBundle, s *settings.Settings, moduleName string) []types.PackageSummary {
 	type pkgAccum struct {
 		files     []string
 		types     map[string]bool
+		typeDescs map[string]bool // formatted struct descriptions
 		functions map[string]bool
+		funcDescs map[string]bool // formatted function signatures
 		imports   map[string]bool
 		signals   types.PackageSignals
 	}
@@ -560,7 +629,9 @@ func buildPackageSummaries(bundles []*evidence.EvidenceBundle) []types.PackageSu
 		if !ok {
 			a = &pkgAccum{
 				types:     make(map[string]bool),
+				typeDescs: make(map[string]bool),
 				functions: make(map[string]bool),
+				funcDescs: make(map[string]bool),
 				imports:   make(map[string]bool),
 			}
 			accum[name] = a
@@ -584,20 +655,35 @@ func buildPackageSummaries(bundles []*evidence.EvidenceBundle) []types.PackageSu
 			a.signals.Concurrency = true
 		}
 
-		// Collect exported types.
+		// Collect exported types and their struct field descriptions.
 		for _, td := range bnd.Symbols.Types {
 			if td.Exported {
 				a.types[td.Name] = true
+				if desc := formatStructDesc(td); desc != "" {
+					a.typeDescs[desc] = true
+				}
 			}
 		}
-		// Collect exported functions.
+		// Collect exported top-level functions and their signatures.
 		for _, fn := range bnd.Symbols.Functions {
 			if fn.Exported {
 				a.functions[fn.Name] = true
 			}
+			if desc := formatFuncDesc(fn); desc != "" {
+				a.funcDescs[desc] = true
+			}
 		}
-		// Collect imports.
+		// Collect imports, skipping any that resolve to a denied local path.
+		// Import paths like "iguana/baml_client" are stripped of the module
+		// prefix to get "baml_client", then checked against the deny list.
 		for _, imp := range bnd.Package.Imports {
+			rel := imp.Path
+			if moduleName != "" {
+				rel = strings.TrimPrefix(imp.Path, moduleName+"/")
+			}
+			if s.IsDenied(rel) {
+				continue
+			}
 			a.imports[imp.Path] = true
 		}
 	}
@@ -635,13 +721,18 @@ func buildPackageSummaries(bundles []*evidence.EvidenceBundle) []types.PackageSu
 		files := append([]string(nil), a.files...)
 		sort.Strings(files)
 
+		// Merge struct descriptions and function signatures into one sorted slice.
+		allDescs := append(topN(a.typeDescs, 30), topN(a.funcDescs, 20)...)
+		sort.Strings(allDescs)
+
 		summaries = append(summaries, types.PackageSummary{
-			Name:      name,
-			Files:     files,
-			Types:     topN(a.types, 30),    // higher cap: types are the aggregate vocabulary
-			Functions: topN(a.functions, 10),
-			Signals:   a.signals,
-			Imports:   topN(a.imports, 10),
+			Name:              name,
+			Files:             files,
+			Types:             topN(a.types, 30),
+			Type_descriptions: allDescs,
+			Functions:         topN(a.functions, 10),
+			Signals:           a.signals,
+			Imports:           topN(a.imports, 10),
 		})
 	}
 
@@ -793,8 +884,11 @@ func GenerateSystemModel(ctx context.Context, root string) (*SystemModel, error)
 	effects := buildEffects(bundles)
 	concurrencyDomains := buildConcurrencyDomains(bundles)
 
-	// Step 4: build package summaries for LLM.
-	summaries := buildPackageSummaries(bundles)
+	// Step 4: build package summaries for LLM, filtering denied imports so
+	// the LLM does not wonder about packages it has no evidence for.
+	s, _ := settings.LoadSettings(root) // nil settings = no filtering
+	mod := readModuleName(root)
+	summaries := buildPackageSummaries(bundles, s, mod)
 
 	// Step 5: call LLM (skip if no summaries — nothing with signals).
 	var stateDomains []StateDomain

@@ -12,12 +12,13 @@ class PackageSignals {
 }
 
 class PackageSummary {
-  name string          // Go package name (e.g. "auth")
-  files string[]       // file paths relative to root
-  types string[]       // exported struct/interface names (top 10)
-  functions string[]   // exported function names (top 10)
+  name string                // Go package name (e.g. "auth")
+  files string[]             // file paths relative to root
+  types string[]             // exported struct/interface names
+  type_descriptions string[] // struct field composition and function signatures
+  functions string[]         // exported function names
   signals PackageSignals
-  imports string[]     // distinct imported packages (top 10)
+  imports string[]           // distinct imported packages (top 10)
 }
 
 class StateDomainSpec {

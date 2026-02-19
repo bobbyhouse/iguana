@@ -1,7 +1,7 @@
 version: 2
 file:
     path: internal/model/model.go
-    sha256: f92dbbe7efc9f4a30b212806ff7760e9403a496a1b9fe48bd058fe2c7c4d3f6a
+    sha256: a50d86fcfdd9efaf9225c56fa0ed17cc3fee5f63f2b27c7ffadb003969897c37
 package:
     name: model
     imports:
@@ -81,6 +81,8 @@ symbols:
           exported: false
           params:
             - '[]*evidence.EvidenceBundle'
+            - '*settings.Settings'
+            - string
           returns:
             - '[]types.PackageSummary'
         - name: computeBundleSetHash
@@ -95,6 +97,18 @@ symbols:
             - string
             - int
             - string
+          returns:
+            - string
+        - name: formatFuncDesc
+          exported: false
+          params:
+            - evidence.Function
+          returns:
+            - string
+        - name: formatStructDesc
+          exported: false
+          params:
+            - evidence.TypeDecl
           returns:
             - string
         - name: hasSymbol
@@ -144,6 +158,12 @@ symbols:
             - '[]string'
           returns:
             - '[]string'
+        - name: readModuleName
+          exported: false
+          params:
+            - string
+          returns:
+            - string
         - name: sortedCopy
           exported: false
           params:
@@ -387,6 +407,10 @@ calls:
     - from: GenerateSystemModel
       to: mapTrustZones
     - from: GenerateSystemModel
+      to: readModuleName
+    - from: GenerateSystemModel
+      to: settings.LoadSettings
+    - from: GenerateSystemModel
       to: time.Now
     - from: ReadSystemModel
       to: fmt.Errorf
@@ -445,13 +469,21 @@ calls:
     - from: buildPackageSummaries
       to: append
     - from: buildPackageSummaries
+      to: formatFuncDesc
+    - from: buildPackageSummaries
+      to: formatStructDesc
+    - from: buildPackageSummaries
       to: hasAnySignal
     - from: buildPackageSummaries
       to: len
     - from: buildPackageSummaries
       to: make
     - from: buildPackageSummaries
+      to: s.IsDenied
+    - from: buildPackageSummaries
       to: sort.Strings
+    - from: buildPackageSummaries
+      to: strings.TrimPrefix
     - from: buildPackageSummaries
       to: topN
     - from: buildPackageSummaries.<anonymous>
@@ -474,8 +506,18 @@ calls:
       to: sort.Strings
     - from: computeBundleSetHash
       to: strings.Join
-    - from: evidenceRef
-      to: fmt.Sprintf
+    - from: formatFuncDesc
+      to: len
+    - from: formatFuncDesc
+      to: sb.String
+    - from: formatFuncDesc
+      to: sb.WriteString
+    - from: formatStructDesc
+      to: len
+    - from: formatStructDesc
+      to: sb.String
+    - from: formatStructDesc
+      to: sb.WriteString
     - from: linkEffectsToDomains
       to: len
     - from: linkEffectsToDomains
@@ -542,6 +584,20 @@ calls:
       to: make
     - from: pkgBundleRefs
       to: sort.Strings
+    - from: readModuleName
+      to: filepath.Join
+    - from: readModuleName
+      to: os.ReadFile
+    - from: readModuleName
+      to: string
+    - from: readModuleName
+      to: strings.HasPrefix
+    - from: readModuleName
+      to: strings.SplitN
+    - from: readModuleName
+      to: strings.TrimPrefix
+    - from: readModuleName
+      to: strings.TrimSpace
     - from: sortedCopy
       to: copy
     - from: sortedCopy

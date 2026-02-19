@@ -14,7 +14,7 @@ generator target {
 
     // 'baml-cli generate' will run this after generating go code
     // This command will be run from within $output_dir/baml_client
-    on_generate "gofmt -w . && goimports -w ."
+    on_generate "GOEXPERIMENT= gofmt -w . && GOEXPERIMENT= goimports -w ."
 
     // Your Go packages name as specified in go.mod
     // We need this to generate correct imports in the generated baml_client
