@@ -158,9 +158,8 @@ These invariants must hold before and after every change to the implementation.
 ## Obsidian Vault Invariants
 
 42. **Vault directory structure**: `GenerateObsidianVault` always creates
-    subdirectories `packages/`, `state-domains/`, `trust-zones/`, and
-    `concurrency-domains/` within `outputDir`, even when those sections are
-    empty in the model.
+    subdirectories `state-domains/` and `symbols/` within `outputDir`, even
+    when the model has no state domains.
 
 43. **Wiki link format**: All cross-references between notes use
     `[[path/to/note|display text]]` with no `.md` extension in the path
@@ -175,6 +174,17 @@ These invariants must hold before and after every change to the implementation.
 
 46. **Vault is derived**: The vault is generated from `system_model.yaml`; notes
     are overwritten on each re-generation and must never be manually edited.
+
+53. **Symbol and domain note correspondence**: Each state domain produces exactly
+    one `state-domains/<id>.md`. Each unique symbol name across all state domains
+    (aggregate + representations + mutators + readers) produces exactly one
+    `symbols/<name>.md` that wiki-links to every domain referencing it.
+
+54. **Tag requirements**: State domain notes carry tags `state-domain` and
+    `confidence-<level>` (high ≥0.8, medium ≥0.7, low <0.7). Symbol notes
+    carry tags `symbol`, `role/<role>` for each role the symbol plays, and
+    `domain/<id>` for each domain that references it. All tag arrays are sorted
+    alphabetically.
 
 ## Evidence Enrichment Invariants
 

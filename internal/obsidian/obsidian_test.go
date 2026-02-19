@@ -6,10 +6,12 @@ package obsidian
 // call GenerateObsidianVault, then assert on file contents.
 //
 // Invariants tested:
-//   INV-42: subdirectory structure always created
+//   INV-42: subdirectory structure (state-domains/, symbols/)
 //   INV-43: wiki links use [[path|display]] with no .md extension
 //   INV-44: idempotent — byte-identical output on second run
 //   INV-45: filename sanitization (/ and . → -, collapse runs, trim)
+//   INV-47: symbol and domain note correspondence
+//   INV-48: tag requirements per note type
 
 import (
 	"os"
@@ -32,7 +34,7 @@ func minimalModel() *model.SystemModel {
 		Inputs:      model.ModelInputs{BundleSetSHA256: "abc123"},
 		Inventory: model.Inventory{
 			Packages: []model.PackageEntry{
-				// main imports store — creates a directed import graph edge.
+				// main imports store — not rendered in vault but present in model.
 				{Name: "main", Files: []string{"main.go"}, Imports: []string{"store"}},
 				{Name: "store", Files: []string{"store/db.go", "store/query.go"}},
 			},
@@ -127,23 +129,15 @@ func TestSanitizeFilename(t *testing.T) {
 // INV-42: vault directory structure
 // ---------------------------------------------------------------------------
 
-// TestGenerateObsidianVault_DirectoryStructure verifies INV-42: the four
-// required subdirectories are always created, even with a minimal model.
+// TestGenerateObsidianVault_DirectoryStructure verifies INV-42: state-domains/ and
+// symbols/ are always created; old directories (packages/, trust-zones/, etc.) are not.
 func TestGenerateObsidianVault_DirectoryStructure(t *testing.T) {
 	dir := t.TempDir()
-	m := minimalModel()
-
-	if err := GenerateObsidianVault(m, dir); err != nil {
+	if err := GenerateObsidianVault(minimalModel(), dir); err != nil {
 		t.Fatalf("GenerateObsidianVault: %v", err)
 	}
 
-	requiredDirs := []string{
-		"packages",
-		"state-domains",
-		"trust-zones",
-		"concurrency-domains",
-	}
-	for _, sub := range requiredDirs {
+	for _, sub := range []string{"state-domains", "symbols"} {
 		info, err := os.Stat(filepath.Join(dir, sub))
 		if err != nil {
 			t.Errorf("expected directory %s to exist: %v", sub, err)
@@ -153,41 +147,45 @@ func TestGenerateObsidianVault_DirectoryStructure(t *testing.T) {
 			t.Errorf("expected %s to be a directory, got file", sub)
 		}
 	}
+
+	// Old directories must not be created.
+	for _, absent := range []string{"packages", "trust-zones", "concurrency-domains"} {
+		if _, err := os.Stat(filepath.Join(dir, absent)); err == nil {
+			t.Errorf("unexpected directory %s should not exist", absent)
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
 // INV-43: wiki link format in index
 // ---------------------------------------------------------------------------
 
-// TestGenerateObsidianVault_IndexContainsLinks verifies INV-43: index.md uses
-// [[path|display]] wiki links with no .md extension in the path component.
+// TestGenerateObsidianVault_IndexContainsLinks verifies index.md lists only
+// state domains using [[path|display]] wiki links with no .md extension (INV-43).
 func TestGenerateObsidianVault_IndexContainsLinks(t *testing.T) {
 	dir := t.TempDir()
-	m := minimalModel()
-
-	if err := GenerateObsidianVault(m, dir); err != nil {
+	if err := GenerateObsidianVault(minimalModel(), dir); err != nil {
 		t.Fatalf("GenerateObsidianVault: %v", err)
 	}
 
 	content := readFile(t, filepath.Join(dir, "index.md"))
 
-	// Package link: [[packages/main|main]]
-	if !strings.Contains(content, "[[packages/main|main]]") {
-		t.Errorf("index.md missing package wiki link for 'main';\ngot:\n%s", content)
-	}
-	// State domain link: [[state-domains/evidence_store|evidence_store]]
+	// State domain link present.
 	if !strings.Contains(content, "[[state-domains/evidence_store|evidence_store]]") {
 		t.Errorf("index.md missing state-domain wiki link;\ngot:\n%s", content)
 	}
-	// Trust zone link.
-	if !strings.Contains(content, "[[trust-zones/internal|internal]]") {
-		t.Errorf("index.md missing trust-zone wiki link;\ngot:\n%s", content)
+
+	// No package or trust-zone links in index.
+	if strings.Contains(content, "[[packages/") {
+		t.Errorf("index.md should not contain package links;\ngot:\n%s", content)
 	}
-	// No .md extension anywhere in wiki link paths (INV-43).
-	lines := strings.Split(content, "\n")
-	for _, line := range lines {
+	if strings.Contains(content, "[[trust-zones/") {
+		t.Errorf("index.md should not contain trust-zone links;\ngot:\n%s", content)
+	}
+
+	// No .md extension in any wiki link path (INV-43).
+	for _, line := range strings.Split(content, "\n") {
 		if idx := strings.Index(line, "[["); idx >= 0 {
-			// Extract path portion up to | or ]].
 			inner := line[idx+2:]
 			end := strings.IndexAny(inner, "|]")
 			if end >= 0 {
@@ -201,73 +199,65 @@ func TestGenerateObsidianVault_IndexContainsLinks(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Package note back-links
-// ---------------------------------------------------------------------------
-
-// TestGenerateObsidianVault_PackageNoteLinks verifies that a package note
-// contains wiki links back to the state domains that own it.
-func TestGenerateObsidianVault_PackageNoteLinks(t *testing.T) {
-	dir := t.TempDir()
-	m := minimalModel()
-
-	if err := GenerateObsidianVault(m, dir); err != nil {
-		t.Fatalf("GenerateObsidianVault: %v", err)
-	}
-
-	// 'store' package is owned by 'evidence_store' domain.
-	content := readFile(t, filepath.Join(dir, "packages", "store.md"))
-
-	if !strings.Contains(content, "[[state-domains/evidence_store|evidence_store]]") {
-		t.Errorf("packages/store.md missing back-link to evidence_store;\ngot:\n%s", content)
-	}
-	// Trust zone back-link.
-	if !strings.Contains(content, "[[trust-zones/internal|internal]]") {
-		t.Errorf("packages/store.md missing back-link to internal trust zone;\ngot:\n%s", content)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // State domain note
 // ---------------------------------------------------------------------------
 
-// TestGenerateObsidianVault_StateDomainNote verifies the state domain note
-// contains owner wiki links and confidence.
+// TestGenerateObsidianVault_StateDomainNote verifies wiki links to symbols,
+// confidence tag, description, and effects table.
 func TestGenerateObsidianVault_StateDomainNote(t *testing.T) {
 	dir := t.TempDir()
-	m := minimalModel()
-
-	if err := GenerateObsidianVault(m, dir); err != nil {
+	if err := GenerateObsidianVault(minimalModel(), dir); err != nil {
 		t.Fatalf("GenerateObsidianVault: %v", err)
 	}
 
 	content := readFile(t, filepath.Join(dir, "state-domains", "evidence_store.md"))
 
-	// Owner back-link.
-	if !strings.Contains(content, "[[packages/store|store]]") {
-		t.Errorf("state-domains/evidence_store.md missing owner link;\ngot:\n%s", content)
+	// Aggregate wiki link (not inline code).
+	if !strings.Contains(content, "[[symbols/EvidenceBundle|EvidenceBundle]]") {
+		t.Errorf("missing aggregate wiki link;\ngot:\n%s", content)
+	}
+	// Representation wiki link.
+	if !strings.Contains(content, "[[symbols/EvidenceRecord|EvidenceRecord]]") {
+		t.Errorf("missing representation wiki link;\ngot:\n%s", content)
+	}
+	// Mutator wiki link.
+	if !strings.Contains(content, "[[symbols/SaveBundle|SaveBundle]]") {
+		t.Errorf("missing mutator wiki link;\ngot:\n%s", content)
+	}
+	// Reader wiki link.
+	if !strings.Contains(content, "[[symbols/LoadBundle|LoadBundle]]") {
+		t.Errorf("missing reader wiki link;\ngot:\n%s", content)
 	}
 	// Confidence present.
 	if !strings.Contains(content, "**Confidence**: 0.90") {
-		t.Errorf("state-domains/evidence_store.md missing confidence;\ngot:\n%s", content)
+		t.Errorf("missing confidence;\ngot:\n%s", content)
 	}
 	// Description present.
 	if !strings.Contains(content, "Stores evidence bundles") {
-		t.Errorf("state-domains/evidence_store.md missing description;\ngot:\n%s", content)
+		t.Errorf("missing description;\ngot:\n%s", content)
+	}
+	// Effects table.
+	if !strings.Contains(content, "## Effects") {
+		t.Errorf("missing ## Effects section;\ngot:\n%s", content)
+	}
+	if !strings.Contains(content, "fs_read") {
+		t.Errorf("missing fs_read effect;\ngot:\n%s", content)
+	}
+	// confidence-high tag from frontmatter.
+	if !strings.Contains(content, "  - confidence-high") {
+		t.Errorf("missing confidence-high tag;\ngot:\n%s", content)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Effects note
+// Frontmatter (INV-48)
 // ---------------------------------------------------------------------------
 
-// TestGenerateObsidianVault_Frontmatter verifies that each note type carries a
-// type-specific tag in its YAML frontmatter so Obsidian graph Groups can color
-// nodes differently.
+// TestGenerateObsidianVault_Frontmatter verifies that each note type carries
+// appropriate YAML frontmatter tags for Obsidian graph coloring (INV-48).
 func TestGenerateObsidianVault_Frontmatter(t *testing.T) {
 	dir := t.TempDir()
-	m := minimalModel()
-
-	if err := GenerateObsidianVault(m, dir); err != nil {
+	if err := GenerateObsidianVault(minimalModel(), dir); err != nil {
 		t.Fatalf("GenerateObsidianVault: %v", err)
 	}
 
@@ -276,12 +266,11 @@ func TestGenerateObsidianVault_Frontmatter(t *testing.T) {
 		tag  string
 	}{
 		{"index.md", "iguana/index"},
-		{"packages/main.md", "iguana/package"},
-		{"state-domains/evidence_store.md", "iguana/state-domain"},
-		{"trust-zones/internal.md", "iguana/trust-zone"},
-		{"concurrency-domains/store-db-go.md", "iguana/concurrency-domain"},
-		{"effects.md", "iguana/effects"},
-		{"open-questions.md", "iguana/open-questions"},
+		{"state-domains/evidence_store.md", "state-domain"},
+		{"state-domains/evidence_store.md", "confidence-high"},
+		{"symbols/EvidenceBundle.md", "symbol"},
+		{"symbols/EvidenceBundle.md", "domain/evidence_store"},
+		{"symbols/EvidenceBundle.md", "role/aggregate"},
 	}
 
 	for _, tc := range cases {
@@ -292,32 +281,6 @@ func TestGenerateObsidianVault_Frontmatter(t *testing.T) {
 		if !strings.Contains(content, "  - "+tc.tag) {
 			t.Errorf("%s: missing tag %q in frontmatter;\ngot:\n%s", tc.file, tc.tag, content)
 		}
-	}
-}
-
-// TestGenerateObsidianVault_EffectsNote verifies the effects table is present
-// and contains wiki links to state domains.
-func TestGenerateObsidianVault_EffectsNote(t *testing.T) {
-	dir := t.TempDir()
-	m := minimalModel()
-
-	if err := GenerateObsidianVault(m, dir); err != nil {
-		t.Fatalf("GenerateObsidianVault: %v", err)
-	}
-
-	content := readFile(t, filepath.Join(dir, "effects.md"))
-
-	// Table header.
-	if !strings.Contains(content, "| Kind | Via | Domain |") {
-		t.Errorf("effects.md missing table header;\ngot:\n%s", content)
-	}
-	// Effect row for fs_read.
-	if !strings.Contains(content, "fs_read") {
-		t.Errorf("effects.md missing fs_read effect;\ngot:\n%s", content)
-	}
-	// Domain wiki link in effects table.
-	if !strings.Contains(content, "[[state-domains/evidence_store|evidence_store]]") {
-		t.Errorf("effects.md missing domain wiki link;\ngot:\n%s", content)
 	}
 }
 
@@ -378,139 +341,113 @@ func TestGenerateObsidianVault_Idempotent(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Import graph edges
+// INV-47: symbol note creation
 // ---------------------------------------------------------------------------
 
-// TestGenerateObsidianVault_ImportGraph verifies that package notes contain
-// directed import edges: main → store (Imports) and store ← main (Imported By).
-func TestGenerateObsidianVault_ImportGraph(t *testing.T) {
+// TestGenerateObsidianVault_SymbolNotes_Created verifies INV-47: a symbols/ file
+// is created for each unique aggregate, representation, mutator, and reader.
+func TestGenerateObsidianVault_SymbolNotes_Created(t *testing.T) {
 	dir := t.TempDir()
-	m := minimalModel() // main.Imports = ["store"]
-
-	if err := GenerateObsidianVault(m, dir); err != nil {
+	if err := GenerateObsidianVault(minimalModel(), dir); err != nil {
 		t.Fatalf("GenerateObsidianVault: %v", err)
 	}
 
-	mainNote := readFile(t, filepath.Join(dir, "packages", "main.md"))
-	storeNote := readFile(t, filepath.Join(dir, "packages", "store.md"))
+	for _, name := range []string{"EvidenceBundle", "EvidenceRecord", "SaveBundle", "LoadBundle"} {
+		path := filepath.Join(dir, "symbols", name+".md")
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("symbol note %s not created: %v", path, err)
+		}
+	}
+}
 
-	// main's Imports section should link to store.
-	if !strings.Contains(mainNote, "[[packages/store|store]]") {
-		t.Errorf("packages/main.md Imports section missing link to store;\ngot:\n%s", mainNote)
+// TestGenerateObsidianVault_SymbolNote_BackLink verifies that a symbol note
+// contains a back-link to its owning state domain (INV-47).
+func TestGenerateObsidianVault_SymbolNote_BackLink(t *testing.T) {
+	dir := t.TempDir()
+	if err := GenerateObsidianVault(minimalModel(), dir); err != nil {
+		t.Fatalf("GenerateObsidianVault: %v", err)
 	}
-	// store's Imported By section should link back to main.
-	if !strings.Contains(storeNote, "[[packages/main|main]]") {
-		t.Errorf("packages/store.md Imported By section missing link to main;\ngot:\n%s", storeNote)
-	}
-	// store has no imports in the model, so its Imports section should say _none_.
-	if !strings.Contains(storeNote, "_none_") {
-		t.Errorf("packages/store.md Imports section should be _none_;\ngot:\n%s", storeNote)
+
+	// EvidenceBundle is the aggregate of evidence_store.
+	content := readFile(t, filepath.Join(dir, "symbols", "EvidenceBundle.md"))
+	if !strings.Contains(content, "[[state-domains/evidence_store|evidence_store]]") {
+		t.Errorf("EvidenceBundle.md missing back-link to evidence_store;\ngot:\n%s", content)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Domain writers and readers
+// INV-48: symbol note tags
 // ---------------------------------------------------------------------------
 
-// TestGenerateObsidianVault_DomainWritersReaders verifies that state domain
-// notes show which packages write to and read from the domain, derived from
-// effects — not just LLM ownership.
-//
-// Model:
-//
-//	fs_read  via main.go     → evidence_store  (main reads)
-//	fs_write via store/db.go → evidence_store  (store writes)
-func TestGenerateObsidianVault_DomainWritersReaders(t *testing.T) {
+// TestGenerateObsidianVault_SymbolNote_Tags verifies INV-48: symbol notes carry
+// role/ and domain/ tags in their frontmatter.
+func TestGenerateObsidianVault_SymbolNote_Tags(t *testing.T) {
 	dir := t.TempDir()
-	m := minimalModel()
+	if err := GenerateObsidianVault(minimalModel(), dir); err != nil {
+		t.Fatalf("GenerateObsidianVault: %v", err)
+	}
 
-	if err := GenerateObsidianVault(m, dir); err != nil {
+	content := readFile(t, filepath.Join(dir, "symbols", "EvidenceBundle.md"))
+	for _, want := range []string{"  - symbol", "  - domain/evidence_store", "  - role/aggregate"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("EvidenceBundle.md missing tag %q;\ngot:\n%s", want, content)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Confidence tag mapping (INV-54)
+// ---------------------------------------------------------------------------
+
+// TestGenerateObsidianVault_StateDomainNote_ConfidenceTag verifies that the
+// confidenceTag helper maps scores to the correct tag strings.
+func TestGenerateObsidianVault_StateDomainNote_ConfidenceTag(t *testing.T) {
+	cases := []struct {
+		confidence float64
+		wantTag    string
+	}{
+		{0.9, "confidence-high"},
+		{0.8, "confidence-high"},
+		{0.75, "confidence-medium"},
+		{0.7, "confidence-medium"},
+		{0.6, "confidence-low"},
+		{0.0, "confidence-low"},
+	}
+
+	for _, tc := range cases {
+		got := confidenceTag(tc.confidence)
+		if got != tc.wantTag {
+			t.Errorf("confidenceTag(%.2f) = %q, want %q", tc.confidence, got, tc.wantTag)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// INV-43: wiki link format in state domain notes
+// ---------------------------------------------------------------------------
+
+// TestGenerateObsidianVault_StateDomainNote_WikiLinks verifies INV-43 within
+// state domain notes: all wiki links use [[path|display]] with no .md extension.
+func TestGenerateObsidianVault_StateDomainNote_WikiLinks(t *testing.T) {
+	dir := t.TempDir()
+	if err := GenerateObsidianVault(minimalModel(), dir); err != nil {
 		t.Fatalf("GenerateObsidianVault: %v", err)
 	}
 
 	content := readFile(t, filepath.Join(dir, "state-domains", "evidence_store.md"))
 
-	// Writers section: store produces fs_write to this domain.
-	if !strings.Contains(content, "## Writers") {
-		t.Errorf("evidence_store.md missing ## Writers section;\ngot:\n%s", content)
-	}
-	if !strings.Contains(content, "[[packages/store|store]]") {
-		t.Errorf("evidence_store.md Writers missing store link;\ngot:\n%s", content)
-	}
-
-	// Readers section: main produces fs_read to this domain.
-	if !strings.Contains(content, "## Readers") {
-		t.Errorf("evidence_store.md missing ## Readers section;\ngot:\n%s", content)
-	}
-	if !strings.Contains(content, "[[packages/main|main]]") {
-		t.Errorf("evidence_store.md Readers missing main link;\ngot:\n%s", content)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Concurrency × domain intersection
-// ---------------------------------------------------------------------------
-
-// TestGenerateObsidianVault_ConcurrencyDomainIntersection verifies that:
-//   - concurrency domain notes link to state domains they touch
-//   - state domain notes flag concurrent access with a warning section
-//
-// Model:
-//
-//	ConcurrencyDomain {ID: "store/db.go", Files: ["store/db.go"]}
-//	Effect {Kind: "fs_write", Via: "store/db.go", Domain: "evidence_store"}
-//	→ store/db.go is both concurrent and writes to evidence_store
-func TestGenerateObsidianVault_ConcurrencyDomainIntersection(t *testing.T) {
-	dir := t.TempDir()
-	m := minimalModel()
-
-	if err := GenerateObsidianVault(m, dir); err != nil {
-		t.Fatalf("GenerateObsidianVault: %v", err)
-	}
-
-	// Concurrency domain note should link to the state domain it touches.
-	cdNote := readFile(t, filepath.Join(dir, "concurrency-domains", "store-db-go.md"))
-	if !strings.Contains(cdNote, "## Touches State Domains") {
-		t.Errorf("concurrency-domains/store-db-go.md missing ## Touches State Domains;\ngot:\n%s", cdNote)
-	}
-	if !strings.Contains(cdNote, "[[state-domains/evidence_store|evidence_store]]") {
-		t.Errorf("concurrency-domains/store-db-go.md missing link to evidence_store;\ngot:\n%s", cdNote)
-	}
-
-	// State domain note should flag concurrent access.
-	domNote := readFile(t, filepath.Join(dir, "state-domains", "evidence_store.md"))
-	if !strings.Contains(domNote, "Concurrent Access") {
-		t.Errorf("evidence_store.md missing Concurrent Access section;\ngot:\n%s", domNote)
-	}
-	if !strings.Contains(domNote, "store-db-go") {
-		t.Errorf("evidence_store.md Concurrent Access missing store/db.go link;\ngot:\n%s", domNote)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Package effects table
-// ---------------------------------------------------------------------------
-
-// TestGenerateObsidianVault_PackageEffectsTable verifies that a package note
-// contains a table of effects it produces with kind, file, and domain links.
-func TestGenerateObsidianVault_PackageEffectsTable(t *testing.T) {
-	dir := t.TempDir()
-	m := minimalModel()
-
-	if err := GenerateObsidianVault(m, dir); err != nil {
-		t.Fatalf("GenerateObsidianVault: %v", err)
-	}
-
-	// store produces fs_write to evidence_store via store/db.go.
-	storeNote := readFile(t, filepath.Join(dir, "packages", "store.md"))
-	if !strings.Contains(storeNote, "## Effects") {
-		t.Errorf("packages/store.md missing ## Effects section;\ngot:\n%s", storeNote)
-	}
-	if !strings.Contains(storeNote, "fs_write") {
-		t.Errorf("packages/store.md Effects missing fs_write row;\ngot:\n%s", storeNote)
-	}
-	if !strings.Contains(storeNote, "[[state-domains/evidence_store|evidence_store]]") {
-		t.Errorf("packages/store.md Effects missing domain link;\ngot:\n%s", storeNote)
+	// All wiki links in the note must have no .md extension in the path (INV-43).
+	for _, line := range strings.Split(content, "\n") {
+		if idx := strings.Index(line, "[["); idx >= 0 {
+			inner := line[idx+2:]
+			end := strings.IndexAny(inner, "|]")
+			if end >= 0 {
+				path := inner[:end]
+				if strings.HasSuffix(path, ".md") {
+					t.Errorf("wiki link path must not end with .md: %q in line %q", path, line)
+				}
+			}
+		}
 	}
 }
 
@@ -519,7 +456,7 @@ func TestGenerateObsidianVault_PackageEffectsTable(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestGenerateObsidianVault_EmptyModel verifies graceful handling of a model
-// with no domains, effects, trust zones, or open questions.
+// with no domains, effects, or open questions.
 func TestGenerateObsidianVault_EmptyModel(t *testing.T) {
 	dir := t.TempDir()
 	m := &model.SystemModel{
@@ -532,14 +469,20 @@ func TestGenerateObsidianVault_EmptyModel(t *testing.T) {
 		t.Fatalf("GenerateObsidianVault on empty model: %v", err)
 	}
 
-	// index.md must still be created.
+	// index.md must be created.
 	if _, err := os.Stat(filepath.Join(dir, "index.md")); err != nil {
 		t.Errorf("index.md not created for empty model: %v", err)
 	}
 
-	// effects.md must still be created (with header but no rows).
-	content := readFile(t, filepath.Join(dir, "effects.md"))
-	if !strings.Contains(content, "# Effects") {
-		t.Errorf("effects.md missing header;\ngot:\n%s", content)
+	// effects.md must NOT be created (feature removed).
+	if _, err := os.Stat(filepath.Join(dir, "effects.md")); err == nil {
+		t.Errorf("effects.md should not be created")
+	}
+
+	// state-domains/ and symbols/ must exist even when empty.
+	for _, sub := range []string{"state-domains", "symbols"} {
+		if _, err := os.Stat(filepath.Join(dir, sub)); err != nil {
+			t.Errorf("expected directory %s to exist: %v", sub, err)
+		}
 	}
 }

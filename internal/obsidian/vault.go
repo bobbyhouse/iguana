@@ -1,17 +1,18 @@
 package obsidian
 
-// obsidian.go — Converts a SystemModel into an Obsidian vault.
+// vault.go — Converts a SystemModel into an Obsidian vault.
 //
-// The vault is a directory of inter-linked markdown files using Obsidian's
-// [[wiki link]] syntax, making the system model explorable via graph view.
+// The vault contains only state domains and their associated symbols.
+// Domains and symbols form a bipartite graph: each state domain note
+// wiki-links to its aggregate, representations, mutators, and readers;
+// each symbol note wiki-links back to every domain that references it.
 //
-// Three categories of relationships are surfaced as direct graph edges:
+// Vault layout:
+//   index.md                      — entry point listing all state domains
+//   state-domains/<id>.md         — one note per state domain
+//   symbols/<name>.md             — one note per unique symbol name
 //
-//  1. Import graph    — package → packages it imports (dependency / blast-radius)
-//  2. Effect edges    — package → state domains it writes or reads (causality)
-//  3. Concurrency risk — concurrent files → state domains they touch (race risk)
-//
-// See INVARIANT.md INV-42..46.
+// See INVARIANT.md INV-42..46, INV-53..54.
 
 import (
 	"fmt"
@@ -23,205 +24,76 @@ import (
 	"iguana/internal/model"
 )
 
-// ---------------------------------------------------------------------------
-// Relationship context
-// ---------------------------------------------------------------------------
-
-// vaultCtx holds pre-computed relationship maps so each note writer can
-// produce direct wiki-link edges without re-scanning the full model.
-type vaultCtx struct {
-	importedBy            map[string][]string // pkg → packages that import it
-	pkgToDomains          map[string][]string // pkg → state domain IDs (LLM ownership)
-	pkgToZones            map[string][]string // pkg → trust zone IDs
-	pkgEffects            map[string][]model.Effect // pkg → effects it produces
-	domainWriters         map[string][]string // domain → packages that write to it
-	domainReaders         map[string][]string // domain → packages that read from it
-	domainConcurrentFiles map[string][]string // domain → concurrent files touching it
-	concurrencyToDomains  map[string][]string // concurrency domain ID → state domain IDs
+// symbolRole records one domain's claim on a symbol name.
+type symbolRole struct {
+	domainID string
+	role     string // "aggregate" | "representation" | "mutator" | "reader"
 }
 
-func buildVaultCtx(sys *model.SystemModel) vaultCtx {
-	fileToPkg := buildFileToPackage(sys.Inventory.Packages)
-	writers, readers := buildDomainPackageEffects(sys.Effects, fileToPkg)
-	return vaultCtx{
-		importedBy:            buildImportedBy(sys.Inventory.Packages),
-		pkgToDomains:          buildPkgToDomains(sys.StateDomains),
-		pkgToZones:            buildPkgToZones(sys.TrustZones),
-		pkgEffects:            buildPkgEffects(sys.Effects, fileToPkg),
-		domainWriters:         writers,
-		domainReaders:         readers,
-		domainConcurrentFiles: buildDomainToConcurrentFiles(sys.ConcurrencyDomains, sys.Effects),
-		concurrencyToDomains:  buildConcurrencyToDomains(sys.ConcurrencyDomains, sys.Effects),
-	}
-}
-
-// buildFileToPackage returns a map from file path to the package that owns it.
-func buildFileToPackage(packages []model.PackageEntry) map[string]string {
-	m := make(map[string]string)
-	for _, pkg := range packages {
-		for _, f := range pkg.Files {
-			m[f] = pkg.Name
-		}
-	}
-	return m
-}
-
-// buildImportedBy returns the reverse of PackageEntry.Imports:
-// for each package, which packages import it.
-func buildImportedBy(packages []model.PackageEntry) map[string][]string {
-	m := make(map[string][]string)
-	for _, pkg := range packages {
-		for _, dep := range pkg.Imports {
-			m[dep] = append(m[dep], pkg.Name)
-		}
-	}
-	for k := range m {
-		sort.Strings(m[k])
-	}
-	return m
-}
-
-// buildPkgToDomains maps package name → state domain IDs that list it as an owner.
-func buildPkgToDomains(domains []model.StateDomain) map[string][]string {
-	m := make(map[string][]string)
+// collectSymbols gathers all symbol names from every state domain,
+// returning a map of symbol name → []symbolRole (one entry per domain reference).
+// Roles are appended in domain slice order, giving deterministic output.
+func collectSymbols(domains []model.StateDomain) map[string][]symbolRole {
+	m := make(map[string][]symbolRole)
 	for _, d := range domains {
-		for _, pkg := range d.Owners {
-			m[pkg] = append(m[pkg], d.ID)
+		if d.Aggregate != "" {
+			m[d.Aggregate] = append(m[d.Aggregate], symbolRole{domainID: d.ID, role: "aggregate"})
+		}
+		for _, r := range d.Representations {
+			if r != "" {
+				m[r] = append(m[r], symbolRole{domainID: d.ID, role: "representation"})
+			}
+		}
+		for _, mut := range d.PrimaryMutators {
+			if mut != "" {
+				m[mut] = append(m[mut], symbolRole{domainID: d.ID, role: "mutator"})
+			}
+		}
+		for _, rdr := range d.PrimaryReaders {
+			if rdr != "" {
+				m[rdr] = append(m[rdr], symbolRole{domainID: d.ID, role: "reader"})
+			}
 		}
 	}
 	return m
 }
 
-// buildPkgToZones maps package name → trust zone IDs that include it.
-func buildPkgToZones(zones []model.TrustZone) map[string][]string {
-	m := make(map[string][]string)
-	for _, z := range zones {
-		for _, pkg := range z.Packages {
-			m[pkg] = append(m[pkg], z.ID)
-		}
-	}
-	return m
-}
-
-// buildPkgEffects maps package name → the effects its files produce.
-func buildPkgEffects(effects []model.Effect, fileToPkg map[string]string) map[string][]model.Effect {
-	m := make(map[string][]model.Effect)
+// domainEffects returns all effects whose Domain field matches domainID.
+func domainEffects(domainID string, effects []model.Effect) []model.Effect {
+	var out []model.Effect
 	for _, e := range effects {
-		pkg := fileToPkg[e.Via]
-		if pkg == "" {
-			continue
+		if e.Domain == domainID {
+			out = append(out, e)
 		}
-		m[pkg] = append(m[pkg], e)
-	}
-	return m
-}
-
-// buildDomainPackageEffects returns two maps:
-//   - writers: domain → packages that produce write effects (db_write, fs_write)
-//   - readers: domain → packages that produce read effects (fs_read)
-func buildDomainPackageEffects(effects []model.Effect, fileToPkg map[string]string) (writers, readers map[string][]string) {
-	wSet := make(map[string]map[string]bool)
-	rSet := make(map[string]map[string]bool)
-	for _, e := range effects {
-		if e.Domain == "" {
-			continue
-		}
-		pkg := fileToPkg[e.Via]
-		if pkg == "" {
-			continue
-		}
-		switch e.Kind {
-		case "db_write", "fs_write":
-			if wSet[e.Domain] == nil {
-				wSet[e.Domain] = make(map[string]bool)
-			}
-			wSet[e.Domain][pkg] = true
-		case "fs_read":
-			if rSet[e.Domain] == nil {
-				rSet[e.Domain] = make(map[string]bool)
-			}
-			rSet[e.Domain][pkg] = true
-		}
-	}
-	toSliceMap := func(m map[string]map[string]bool) map[string][]string {
-		out := make(map[string][]string, len(m))
-		for k, set := range m {
-			sl := make([]string, 0, len(set))
-			for v := range set {
-				sl = append(sl, v)
-			}
-			sort.Strings(sl)
-			out[k] = sl
-		}
-		return out
-	}
-	return toSliceMap(wSet), toSliceMap(rSet)
-}
-
-// buildDomainToConcurrentFiles returns a map from state domain ID → files that
-// both appear in a ConcurrencyDomain and produce effects in that domain.
-// These represent concurrent access to shared state — the highest-risk sites.
-func buildDomainToConcurrentFiles(concDomains []model.ConcurrencyDomain, effects []model.Effect) map[string][]string {
-	concurrentFiles := make(map[string]bool)
-	for _, cd := range concDomains {
-		for _, f := range cd.Files {
-			concurrentFiles[f] = true
-		}
-	}
-	domainSet := make(map[string]map[string]bool)
-	for _, e := range effects {
-		if e.Domain == "" || !concurrentFiles[e.Via] {
-			continue
-		}
-		if domainSet[e.Domain] == nil {
-			domainSet[e.Domain] = make(map[string]bool)
-		}
-		domainSet[e.Domain][e.Via] = true
-	}
-	out := make(map[string][]string, len(domainSet))
-	for domain, fileSet := range domainSet {
-		files := make([]string, 0, len(fileSet))
-		for f := range fileSet {
-			files = append(files, f)
-		}
-		sort.Strings(files)
-		out[domain] = files
 	}
 	return out
 }
 
-// buildConcurrencyToDomains returns a map from concurrency domain ID → state
-// domain IDs that the domain's files touch via effects.
-func buildConcurrencyToDomains(concDomains []model.ConcurrencyDomain, effects []model.Effect) map[string][]string {
-	// file → set of domain IDs it touches via effects.
-	fileDomains := make(map[string]map[string]bool)
-	for _, e := range effects {
-		if e.Domain == "" {
-			continue
-		}
-		if fileDomains[e.Via] == nil {
-			fileDomains[e.Via] = make(map[string]bool)
-		}
-		fileDomains[e.Via][e.Domain] = true
+// confidenceTag maps a confidence score to an Obsidian tag string (INV-54).
+// ≥0.8 → "confidence-high", ≥0.7 → "confidence-medium", <0.7 → "confidence-low".
+func confidenceTag(c float64) string {
+	switch {
+	case c >= 0.8:
+		return "confidence-high"
+	case c >= 0.7:
+		return "confidence-medium"
+	default:
+		return "confidence-low"
 	}
-	out := make(map[string][]string)
-	for _, cd := range concDomains {
-		domainSet := make(map[string]bool)
-		for _, f := range cd.Files {
-			for d := range fileDomains[f] {
-				domainSet[d] = true
-			}
-		}
-		if len(domainSet) > 0 {
-			domains := make([]string, 0, len(domainSet))
-			for d := range domainSet {
-				domains = append(domains, d)
-			}
-			sort.Strings(domains)
-			out[cd.ID] = domains
-		}
+}
+
+// frontmatter returns a YAML frontmatter block. Tags are sorted alphabetically (INV-54).
+func frontmatter(tags []string) string {
+	sorted := make([]string, len(tags))
+	copy(sorted, tags)
+	sort.Strings(sorted)
+	var b strings.Builder
+	b.WriteString("---\ntags:\n")
+	for _, t := range sorted {
+		b.WriteString("  - " + t + "\n")
 	}
-	return out
+	b.WriteString("---\n\n")
+	return b.String()
 }
 
 // ---------------------------------------------------------------------------
@@ -229,53 +101,40 @@ func buildConcurrencyToDomains(concDomains []model.ConcurrencyDomain, effects []
 // ---------------------------------------------------------------------------
 
 // GenerateObsidianVault writes an Obsidian-compatible markdown vault rooted at
-// outputDir from the given SystemModel. Subdirectories are created as needed.
-// Existing files are overwritten (INV-46). Produces identical output when called
-// twice with the same inputs (INV-44).
+// outputDir from the given SystemModel. Only state-domains/ and symbols/
+// subdirectories are created. Existing files are overwritten (INV-46).
+// Produces identical output when called twice with the same inputs (INV-44).
 func GenerateObsidianVault(sys *model.SystemModel, outputDir string) error {
 	// INV-42: always create these subdirectories.
-	for _, sub := range []string{"packages", "state-domains", "trust-zones", "concurrency-domains"} {
+	for _, sub := range []string{"state-domains", "symbols"} {
 		if err := os.MkdirAll(filepath.Join(outputDir, sub), 0o755); err != nil {
 			return fmt.Errorf("mkdir %s: %w", sub, err)
 		}
 	}
 
-	ctx := buildVaultCtx(sys)
-
 	if err := writeVaultIndex(sys, outputDir); err != nil {
 		return err
 	}
 
-	for _, pkg := range sys.Inventory.Packages {
-		if err := writePackageNote(pkg, ctx, outputDir); err != nil {
-			return err
-		}
-	}
+	symbols := collectSymbols(sys.StateDomains)
 
 	for _, d := range sys.StateDomains {
-		if err := writeStateDomainNote(d, ctx, outputDir); err != nil {
+		if err := writeStateDomainNote(d, sys.Effects, outputDir); err != nil {
 			return err
 		}
 	}
 
-	for _, z := range sys.TrustZones {
-		if err := writeTrustZoneNote(z, outputDir); err != nil {
+	// Sort symbol names for deterministic output (INV-44).
+	names := make([]string, 0, len(symbols))
+	for name := range symbols {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		if err := writeSymbolNote(name, symbols[name], outputDir); err != nil {
 			return err
 		}
-	}
-
-	for _, cd := range sys.ConcurrencyDomains {
-		if err := writeConcurrencyDomainNote(cd, ctx, outputDir); err != nil {
-			return err
-		}
-	}
-
-	if err := writeEffectsNote(sys.Effects, outputDir); err != nil {
-		return err
-	}
-
-	if err := writeOpenQuestionsNote(sys.OpenQuestions, outputDir); err != nil {
-		return err
 	}
 
 	return nil
@@ -285,213 +144,82 @@ func GenerateObsidianVault(sys *model.SystemModel, outputDir string) error {
 // Note writers
 // ---------------------------------------------------------------------------
 
-// writeVaultIndex writes index.md — the entry point for the vault.
+// writeVaultIndex writes index.md — the entry point listing all state domains.
 func writeVaultIndex(sys *model.SystemModel, outputDir string) error {
 	var b strings.Builder
 
-	b.WriteString(frontmatter("iguana/index"))
+	b.WriteString(frontmatter([]string{"iguana/index"}))
 	b.WriteString("# System Model\n\n")
 	b.WriteString(fmt.Sprintf("- **Generated**: %s\n", sys.GeneratedAt))
 	b.WriteString(fmt.Sprintf("- **Bundle hash**: `%s`\n\n", sys.Inputs.BundleSetSHA256))
 
-	b.WriteString("## Packages\n\n")
-	for _, pkg := range sys.Inventory.Packages {
-		name := sanitizeFilename(pkg.Name)
-		b.WriteString(fmt.Sprintf("- [[packages/%s|%s]]\n", name, pkg.Name))
-	}
-
-	b.WriteString("\n## State Domains\n\n")
+	b.WriteString("## State Domains\n\n")
 	for _, d := range sys.StateDomains {
 		id := sanitizeFilename(d.ID)
 		b.WriteString(fmt.Sprintf("- [[state-domains/%s|%s]] — %s\n", id, d.ID, d.Description))
 	}
 
-	b.WriteString("\n## Trust Zones\n\n")
-	for _, z := range sys.TrustZones {
-		id := sanitizeFilename(z.ID)
-		b.WriteString(fmt.Sprintf("- [[trust-zones/%s|%s]]\n", id, z.ID))
-	}
-
-	b.WriteString("\n## Concurrency Domains\n\n")
-	for _, cd := range sys.ConcurrencyDomains {
-		id := sanitizeFilename(cd.ID)
-		b.WriteString(fmt.Sprintf("- [[concurrency-domains/%s|%s]]\n", id, cd.ID))
-	}
-
-	b.WriteString("\n## Other\n\n")
-	b.WriteString("- [[effects|Effects]]\n")
-	b.WriteString("- [[open-questions|Open Questions]]\n")
-
 	return writeNote(filepath.Join(outputDir, "index.md"), b.String())
-}
-
-// writePackageNote writes packages/<name>.md.
-//
-// Sections:
-//   - Files: source files in this package
-//   - Imports: packages this one depends on (import graph edges)
-//   - Imported by: packages that depend on this one (reverse import edges)
-//   - Owned state domains: LLM-inferred ownership
-//   - Effects: what this package actually does to which domains (write/read edges)
-//   - Trust zones: security boundary membership
-func writePackageNote(pkg model.PackageEntry, ctx vaultCtx, outputDir string) error {
-	var b strings.Builder
-
-	b.WriteString(frontmatter("iguana/package"))
-	b.WriteString(fmt.Sprintf("# Package: %s\n\n", pkg.Name))
-
-	b.WriteString("## Files\n\n")
-	for _, f := range pkg.Files {
-		b.WriteString(fmt.Sprintf("- `%s`\n", f))
-	}
-
-	// Import graph: outbound dependencies.
-	b.WriteString("\n## Imports\n\n")
-	if len(pkg.Imports) > 0 {
-		for _, dep := range pkg.Imports {
-			san := sanitizeFilename(dep)
-			b.WriteString(fmt.Sprintf("- [[packages/%s|%s]]\n", san, dep))
-		}
-	} else {
-		b.WriteString("_none_\n")
-	}
-
-	// Import graph: inbound dependencies (who breaks if this changes).
-	b.WriteString("\n## Imported By\n\n")
-	importedBy := ctx.importedBy[pkg.Name]
-	if len(importedBy) > 0 {
-		for _, dep := range importedBy {
-			san := sanitizeFilename(dep)
-			b.WriteString(fmt.Sprintf("- [[packages/%s|%s]]\n", san, dep))
-		}
-	} else {
-		b.WriteString("_none_\n")
-	}
-
-	// What this package actually does (effect edges to state domains).
-	effects := ctx.pkgEffects[pkg.Name]
-	if len(effects) > 0 {
-		b.WriteString("\n## Effects\n\n")
-		b.WriteString("| Kind | File | Domain |\n")
-		b.WriteString("|------|------|--------|\n")
-		for _, e := range effects {
-			domainCell := e.Domain
-			if e.Domain != "" {
-				san := sanitizeFilename(e.Domain)
-				domainCell = fmt.Sprintf("[[state-domains/%s|%s]]", san, e.Domain)
-			}
-			b.WriteString(fmt.Sprintf("| %s | `%s` | %s |\n", e.Kind, e.Via, domainCell))
-		}
-	}
-
-	// LLM-inferred ownership (semantic clustering).
-	domainIDs := ctx.pkgToDomains[pkg.Name]
-	b.WriteString("\n## Owned State Domains\n\n")
-	if len(domainIDs) > 0 {
-		for _, id := range domainIDs {
-			san := sanitizeFilename(id)
-			b.WriteString(fmt.Sprintf("- [[state-domains/%s|%s]]\n", san, id))
-		}
-	} else {
-		b.WriteString("_none_\n")
-	}
-
-	b.WriteString("\n## Trust Zones\n\n")
-	zoneIDs := ctx.pkgToZones[pkg.Name]
-	if len(zoneIDs) > 0 {
-		for _, id := range zoneIDs {
-			san := sanitizeFilename(id)
-			b.WriteString(fmt.Sprintf("- [[trust-zones/%s|%s]]\n", san, id))
-		}
-	} else {
-		b.WriteString("_none_\n")
-	}
-
-	name := sanitizeFilename(pkg.Name)
-	return writeNote(filepath.Join(outputDir, "packages", name+".md"), b.String())
 }
 
 // writeStateDomainNote writes state-domains/<id>.md.
 //
 // Sections:
-//   - Owners: LLM-inferred owning packages
-//   - Writers: packages that produce write effects in this domain (causal edges)
-//   - Readers: packages that produce read effects in this domain (causal edges)
-//   - Concurrent access: files in concurrency domains that touch this domain (risk signal)
-//   - Aggregate / Representations / Primary Mutators / Primary Readers
-func writeStateDomainNote(d model.StateDomain, ctx vaultCtx, outputDir string) error {
+//   - Header with confidence and owners
+//   - Aggregate: wiki link to symbols/<name>
+//   - Representations: wiki links to symbols/<name>
+//   - Primary Mutators: wiki links to symbols/<name>
+//   - Primary Readers: wiki links to symbols/<name>
+//   - Effects: table of kind + via for this domain
+func writeStateDomainNote(d model.StateDomain, effects []model.Effect, outputDir string) error {
 	var b strings.Builder
 
-	b.WriteString(frontmatter("iguana/state-domain"))
-	b.WriteString(fmt.Sprintf("# State Domain: %s\n\n", d.ID))
+	tags := []string{"state-domain", confidenceTag(d.Confidence)}
+	b.WriteString(frontmatter(tags))
+	b.WriteString(fmt.Sprintf("# %s\n\n", d.ID))
 	b.WriteString(d.Description + "\n\n")
-	b.WriteString(fmt.Sprintf("**Confidence**: %.2f\n\n", d.Confidence))
-
-	b.WriteString("## Owners\n\n")
-	for _, pkg := range d.Owners {
-		san := sanitizeFilename(pkg)
-		b.WriteString(fmt.Sprintf("- [[packages/%s|%s]]\n", san, pkg))
-	}
-	if len(d.Owners) == 0 {
-		b.WriteString("_none_\n")
+	b.WriteString(fmt.Sprintf("**Confidence**: %.2f\n", d.Confidence))
+	if len(d.Owners) > 0 {
+		b.WriteString(fmt.Sprintf("**Owners**: %s\n", strings.Join(d.Owners, ", ")))
 	}
 
-	// Causal edges: packages that write to this domain.
-	b.WriteString("\n## Writers\n\n")
-	writers := ctx.domainWriters[d.ID]
-	if len(writers) > 0 {
-		for _, pkg := range writers {
-			san := sanitizeFilename(pkg)
-			b.WriteString(fmt.Sprintf("- [[packages/%s|%s]]\n", san, pkg))
-		}
-	} else {
-		b.WriteString("_none_\n")
+	if d.Aggregate != "" {
+		b.WriteString("\n## Aggregate\n\n")
+		san := sanitizeFilename(d.Aggregate)
+		b.WriteString(fmt.Sprintf("[[symbols/%s|%s]]\n", san, d.Aggregate))
 	}
-
-	// Causal edges: packages that read from this domain.
-	b.WriteString("\n## Readers\n\n")
-	readers := ctx.domainReaders[d.ID]
-	if len(readers) > 0 {
-		for _, pkg := range readers {
-			san := sanitizeFilename(pkg)
-			b.WriteString(fmt.Sprintf("- [[packages/%s|%s]]\n", san, pkg))
-		}
-	} else {
-		b.WriteString("_none_\n")
-	}
-
-	// Risk signal: concurrent code touching this domain.
-	concFiles := ctx.domainConcurrentFiles[d.ID]
-	if len(concFiles) > 0 {
-		b.WriteString("\n## ⚠ Concurrent Access\n\n")
-		b.WriteString("These files contain concurrency primitives **and** produce effects in this domain.\n\n")
-		for _, f := range concFiles {
-			san := sanitizeFilename(f)
-			b.WriteString(fmt.Sprintf("- [[concurrency-domains/%s|%s]]\n", san, f))
-		}
-	}
-
-	b.WriteString("\n## Aggregate\n\n")
-	b.WriteString(d.Aggregate + "\n")
 
 	if len(d.Representations) > 0 {
 		b.WriteString("\n## Representations\n\n")
 		for _, r := range d.Representations {
-			b.WriteString(fmt.Sprintf("- `%s`\n", r))
+			san := sanitizeFilename(r)
+			b.WriteString(fmt.Sprintf("- [[symbols/%s|%s]]\n", san, r))
 		}
 	}
 
 	if len(d.PrimaryMutators) > 0 {
 		b.WriteString("\n## Primary Mutators\n\n")
-		for _, m := range d.PrimaryMutators {
-			b.WriteString(fmt.Sprintf("- `%s`\n", m))
+		for _, mut := range d.PrimaryMutators {
+			san := sanitizeFilename(mut)
+			b.WriteString(fmt.Sprintf("- [[symbols/%s|%s]]\n", san, mut))
 		}
 	}
 
 	if len(d.PrimaryReaders) > 0 {
 		b.WriteString("\n## Primary Readers\n\n")
-		for _, r := range d.PrimaryReaders {
-			b.WriteString(fmt.Sprintf("- `%s`\n", r))
+		for _, rdr := range d.PrimaryReaders {
+			san := sanitizeFilename(rdr)
+			b.WriteString(fmt.Sprintf("- [[symbols/%s|%s]]\n", san, rdr))
+		}
+	}
+
+	fx := domainEffects(d.ID, effects)
+	if len(fx) > 0 {
+		b.WriteString("\n## Effects\n\n")
+		b.WriteString("| Kind | Via |\n")
+		b.WriteString("|------|-----|\n")
+		for _, e := range fx {
+			b.WriteString(fmt.Sprintf("| %s | `%s` |\n", e.Kind, e.Via))
 		}
 	}
 
@@ -499,115 +227,48 @@ func writeStateDomainNote(d model.StateDomain, ctx vaultCtx, outputDir string) e
 	return writeNote(filepath.Join(outputDir, "state-domains", id+".md"), b.String())
 }
 
-// writeTrustZoneNote writes trust-zones/<id>.md.
-func writeTrustZoneNote(z model.TrustZone, outputDir string) error {
+// writeSymbolNote writes symbols/<name>.md with back-links to all owning domains.
+// Single-domain symbols use a simple key/value layout; multi-domain symbols use a table.
+func writeSymbolNote(name string, roles []symbolRole, outputDir string) error {
 	var b strings.Builder
 
-	b.WriteString(frontmatter("iguana/trust-zone"))
-	b.WriteString(fmt.Sprintf("# Trust Zone: %s\n\n", z.ID))
-
-	b.WriteString("## Packages\n\n")
-	for _, pkg := range z.Packages {
-		san := sanitizeFilename(pkg)
-		b.WriteString(fmt.Sprintf("- [[packages/%s|%s]]\n", san, pkg))
+	// Build tag set: symbol + domain/<id> + role/<role> for each entry (INV-54).
+	tagSet := make(map[string]bool)
+	tagSet["symbol"] = true
+	for _, sr := range roles {
+		tagSet["domain/"+sr.domainID] = true
+		tagSet["role/"+sr.role] = true
 	}
-	if len(z.Packages) == 0 {
-		b.WriteString("_none_\n")
+	tags := make([]string, 0, len(tagSet))
+	for t := range tagSet {
+		tags = append(tags, t)
 	}
 
-	if len(z.ExternalVia) > 0 {
-		b.WriteString("\n## External Via\n\n")
-		for _, via := range z.ExternalVia {
-			b.WriteString(fmt.Sprintf("- `%s`\n", via))
+	b.WriteString(frontmatter(tags)) // frontmatter sorts tags
+
+	b.WriteString(fmt.Sprintf("# %s\n\n", name))
+
+	if len(roles) == 1 {
+		sr := roles[0]
+		san := sanitizeFilename(sr.domainID)
+		b.WriteString(fmt.Sprintf("**Role**: %s\n", sr.role))
+		b.WriteString(fmt.Sprintf("**Domain**: [[state-domains/%s|%s]]\n", san, sr.domainID))
+	} else {
+		b.WriteString("| Role | Domain |\n")
+		b.WriteString("|------|--------|\n")
+		for _, sr := range roles {
+			san := sanitizeFilename(sr.domainID)
+			b.WriteString(fmt.Sprintf("| %s | [[state-domains/%s|%s]] |\n", sr.role, san, sr.domainID))
 		}
 	}
 
-	id := sanitizeFilename(z.ID)
-	return writeNote(filepath.Join(outputDir, "trust-zones", id+".md"), b.String())
-}
-
-// writeConcurrencyDomainNote writes concurrency-domains/<id>.md.
-//
-// The "Touches State Domains" section creates direct edges to any state domain
-// that this concurrent code accesses — the intersection that matters for races.
-func writeConcurrencyDomainNote(cd model.ConcurrencyDomain, ctx vaultCtx, outputDir string) error {
-	var b strings.Builder
-
-	b.WriteString(frontmatter("iguana/concurrency-domain"))
-	b.WriteString(fmt.Sprintf("# Concurrency Domain: %s\n\n", cd.ID))
-
-	b.WriteString("## Files\n\n")
-	for _, f := range cd.Files {
-		b.WriteString(fmt.Sprintf("- `%s`\n", f))
-	}
-
-	domains := ctx.concurrencyToDomains[cd.ID]
-	if len(domains) > 0 {
-		b.WriteString("\n## Touches State Domains\n\n")
-		for _, domID := range domains {
-			san := sanitizeFilename(domID)
-			b.WriteString(fmt.Sprintf("- [[state-domains/%s|%s]]\n", san, domID))
-		}
-	}
-
-	id := sanitizeFilename(cd.ID)
-	return writeNote(filepath.Join(outputDir, "concurrency-domains", id+".md"), b.String())
-}
-
-// writeEffectsNote writes effects.md — a flat reference table of all effects.
-func writeEffectsNote(effects []model.Effect, outputDir string) error {
-	var b strings.Builder
-
-	b.WriteString(frontmatter("iguana/effects"))
-	b.WriteString("# Effects\n\n")
-	b.WriteString("| Kind | Via | Domain |\n")
-	b.WriteString("|------|-----|--------|\n")
-	for _, e := range effects {
-		domainLink := e.Domain
-		if e.Domain != "" {
-			san := sanitizeFilename(e.Domain)
-			domainLink = fmt.Sprintf("[[state-domains/%s|%s]]", san, e.Domain)
-		}
-		b.WriteString(fmt.Sprintf("| %s | `%s` | %s |\n", e.Kind, e.Via, domainLink))
-	}
-
-	return writeNote(filepath.Join(outputDir, "effects.md"), b.String())
-}
-
-// writeOpenQuestionsNote writes open-questions.md.
-func writeOpenQuestionsNote(questions []model.OpenQuestion, outputDir string) error {
-	var b strings.Builder
-
-	b.WriteString(frontmatter("iguana/open-questions"))
-	b.WriteString("# Open Questions\n\n")
-	for _, q := range questions {
-		b.WriteString(fmt.Sprintf("## %s\n\n", q.Question))
-		if q.RelatedDomain != "" {
-			san := sanitizeFilename(q.RelatedDomain)
-			b.WriteString(fmt.Sprintf("**Related domain**: [[state-domains/%s|%s]]\n\n", san, q.RelatedDomain))
-		}
-		if len(q.MissingEvidence) > 0 {
-			b.WriteString("**Missing evidence**:\n\n")
-			for _, m := range q.MissingEvidence {
-				b.WriteString(fmt.Sprintf("- %s\n", m))
-			}
-			b.WriteString("\n")
-		}
-	}
-
-	return writeNote(filepath.Join(outputDir, "open-questions.md"), b.String())
+	san := sanitizeFilename(name)
+	return writeNote(filepath.Join(outputDir, "symbols", san+".md"), b.String())
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-// frontmatter returns a YAML frontmatter block with a single tag.
-// Obsidian's graph view "Groups" feature can then color nodes by tag
-// (e.g. tag:iguana/state-domain gets one color, tag:iguana/package another).
-func frontmatter(tag string) string {
-	return "---\ntags:\n  - " + tag + "\n---\n\n"
-}
 
 // sanitizeFilename replaces / and . with -, collapses consecutive - to one,
 // and trims leading/trailing - (INV-45).
