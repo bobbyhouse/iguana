@@ -10,6 +10,6 @@ tags:
 
 ## State Domains
 
-- [[state-domains/configuration_management|configuration_management]] — Application settings and permissions configuration
-- [[state-domains/evidence_management|evidence_management]] — Management of code analysis evidence bundles containing package metadata, symbols, and call graphs
-- [[state-domains/system_modeling|system_modeling]] — System architecture models derived from evidence analysis including domains, boundaries, and trust zones
+- [[domains/configuration_management|configuration_management]] — Application settings and permissions configuration
+- [[domains/evidence_management|evidence_management]] — Management of code analysis evidence bundles containing package metadata, symbols, and call graphs
+- [[domains/system_modeling|system_modeling]] — System architecture models derived from evidence analysis including domains, boundaries, and trust zones
