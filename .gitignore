@@ -1,9 +1,10 @@
 bin
 baml_client
-iguana
+/iguana
 
 # Gas Town (added by gt)
 .beads/
 .runtime/
 .claude/commands/
 .logs/
+obsidian-vault/

@@ -1,7 +1,7 @@
 version: 1
-generated_at: "2026-02-19T06:36:59Z"
+generated_at: "2026-02-19T07:00:02Z"
 inputs:
-    bundle_set_sha256: 52ac903fdb9c57b7fb13db8d9ae3e7e76765d87e67992bcdb1372a3940e6fb50
+    bundle_set_sha256: 2fa0dda1b4356f1fb373f4860d84206e2c0992a3ed5591edbce19a16a066fc30
 inventory:
     packages:
         - name: evidence
@@ -46,8 +46,8 @@ inventory:
           evidence_refs:
             - bundle:cmd/iguana/main.go#symbol:main
 state_domains:
-    - id: configuration
-      description: Application settings and permissions for static analysis operations
+    - id: configuration_management
+      description: Application settings and permissions configuration
       owners:
         - settings
       aggregate: Settings
@@ -57,11 +57,12 @@ state_domains:
         - LoadSettings
       primary_readers:
         - IsDenied
+        - LoadSettings
       evidence_refs:
         - bundle:internal/settings/settings.go
       confidence: 0.8
-    - id: evidence_collection
-      description: Static analysis data collection from Go codebases, including package metadata, symbols, and call information
+    - id: evidence_management
+      description: Management of code analysis evidence bundles containing package metadata, symbols, and call graphs
       owners:
         - evidence
       aggregate: EvidenceBundle
@@ -71,22 +72,21 @@ state_domains:
         - Symbols
       primary_mutators:
         - CreateEvidenceBundle
-        - WalkAndGenerate
         - WriteEvidenceBundle
       primary_readers:
-        - CleanEvidenceBundles
+        - CreateEvidenceBundle
       evidence_refs:
         - bundle:internal/evidence/generate.go
       confidence: 0.9
     - id: system_modeling
-      description: Architectural analysis results including domain boundaries, trust zones, and system structure
+      description: System architecture models derived from evidence analysis including domains, boundaries, and trust zones
       owners:
         - model
       aggregate: SystemModel
       representations:
         - Boundaries
+        - Inventory
         - StateDomain
-        - TrustZone
       primary_mutators:
         - GenerateSystemModel
         - WriteSystemModel
@@ -111,7 +111,7 @@ boundaries:
                 - bundle:internal/obsidian/vault.go#signal:fs_writes
 effects:
     - kind: fs_read
-      domain: evidence_collection
+      domain: evidence_management
       via: internal/evidence/generate.go
       evidence_refs:
         - bundle:internal/evidence/generate.go#signal:fs_reads
@@ -121,12 +121,12 @@ effects:
       evidence_refs:
         - bundle:internal/model/model.go#signal:fs_reads
     - kind: fs_read
-      domain: configuration
+      domain: configuration_management
       via: internal/settings/settings.go
       evidence_refs:
         - bundle:internal/settings/settings.go#signal:fs_reads
     - kind: fs_write
-      domain: evidence_collection
+      domain: evidence_management
       via: internal/evidence/generate.go
       evidence_refs:
         - bundle:internal/evidence/generate.go#signal:fs_writes
@@ -152,18 +152,13 @@ trust_zones:
         - bundle:internal/obsidian/vault.go
         - bundle:internal/settings/settings.go
 open_questions:
-    - question: How are evidence bundles persisted and retrieved across analysis runs?
-      related_domain: evidence_collection
+    - question: How are evidence bundles persisted and what is their lifecycle management strategy?
+      related_domain: evidence_management
       missing_evidence:
+        - cleanup_policies
         - persistence_layer
-        - storage_schema
-    - question: How does the obsidian package integrate with the broader system workflow?
+    - question: What external systems or APIs does the system interact with beyond filesystem operations?
       related_domain: system_modeling
       missing_evidence:
-        - obsidian_integration_points
-        - output_consumers
-    - question: What external systems or APIs might the analyzed codebase interact with?
-      related_domain: system_modeling
-      missing_evidence:
-        - external_service_calls
-        - network_dependency_analysis
+        - external_dependencies
+        - network_calls

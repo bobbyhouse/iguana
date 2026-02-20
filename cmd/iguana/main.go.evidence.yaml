@@ -1,0 +1,176 @@
+version: 2
+file:
+    path: cmd/iguana/main.go
+    sha256: b97f1c767cd2e65ab8fc0e11625c2e71a42705fdb4d1f4decca8f4c0bc5052f3
+package:
+    name: main
+    imports:
+        - path: context
+        - path: fmt
+        - path: iguana/internal/evidence
+        - path: iguana/internal/model
+        - path: iguana/internal/obsidian
+        - path: io
+        - path: log
+        - path: os
+        - path: path/filepath
+        - path: strings
+symbols:
+    functions:
+        - name: dispatch
+          exported: false
+          params:
+            - '[]string'
+          returns:
+            - error
+        - name: legacyFilePath
+          exported: false
+          params:
+            - string
+            - bool
+          returns:
+            - error
+        - name: main
+          exported: false
+        - name: parseForceFlag
+          exported: false
+          params:
+            - '[]string'
+          returns:
+            - bool
+            - '[]string'
+        - name: printCommandHelp
+          exported: false
+          params:
+            - io.Writer
+            - string
+        - name: printUsage
+          exported: false
+          params:
+            - io.Writer
+        - name: runAnalyze
+          exported: false
+          params:
+            - '[]string'
+          returns:
+            - error
+        - name: runClean
+          exported: false
+          params:
+            - '[]string'
+          returns:
+            - error
+        - name: runObsidianVault
+          exported: false
+          params:
+            - '[]string'
+          returns:
+            - error
+        - name: runSystemModel
+          exported: false
+          params:
+            - '[]string'
+          returns:
+            - error
+    types:
+        - name: command
+          kind: struct
+          exported: false
+    variables:
+        - name: commands
+          exported: false
+calls:
+    - from: dispatch
+      to: cmd.run
+    - from: dispatch
+      to: fmt.Errorf
+    - from: dispatch
+      to: legacyFilePath
+    - from: dispatch
+      to: len
+    - from: dispatch
+      to: os.Stat
+    - from: dispatch
+      to: printCommandHelp
+    - from: dispatch
+      to: printUsage
+    - from: legacyFilePath
+      to: evidence.CreateEvidenceBundle
+    - from: legacyFilePath
+      to: evidence.WalkAndGenerate
+    - from: legacyFilePath
+      to: evidence.WriteEvidenceBundle
+    - from: legacyFilePath
+      to: fmt.Errorf
+    - from: legacyFilePath
+      to: fmt.Fprintf
+    - from: legacyFilePath
+      to: fmt.Printf
+    - from: legacyFilePath
+      to: info.IsDir
+    - from: legacyFilePath
+      to: len
+    - from: legacyFilePath
+      to: os.Stat
+    - from: legacyFilePath
+      to: strings.HasSuffix
+    - from: main
+      to: dispatch
+    - from: main
+      to: log.Fatal
+    - from: parseForceFlag
+      to: append
+    - from: printCommandHelp
+      to: fmt.Fprintf
+    - from: printUsage
+      to: fmt.Fprintf
+    - from: runAnalyze
+      to: fmt.Errorf
+    - from: runAnalyze
+      to: legacyFilePath
+    - from: runAnalyze
+      to: len
+    - from: runAnalyze
+      to: parseForceFlag
+    - from: runClean
+      to: evidence.CleanEvidenceBundles
+    - from: runClean
+      to: fmt.Printf
+    - from: runClean
+      to: len
+    - from: runObsidianVault
+      to: fmt.Errorf
+    - from: runObsidianVault
+      to: fmt.Printf
+    - from: runObsidianVault
+      to: len
+    - from: runObsidianVault
+      to: model.ReadSystemModel
+    - from: runObsidianVault
+      to: obsidian.GenerateObsidianVault
+    - from: runSystemModel
+      to: context.Background
+    - from: runSystemModel
+      to: filepath.Join
+    - from: runSystemModel
+      to: fmt.Errorf
+    - from: runSystemModel
+      to: fmt.Printf
+    - from: runSystemModel
+      to: len
+    - from: runSystemModel
+      to: model.GenerateSystemModel
+    - from: runSystemModel
+      to: model.SystemModelUpToDate
+    - from: runSystemModel
+      to: model.WriteSystemModel
+    - from: runSystemModel
+      to: parseForceFlag
+signals:
+    fs_reads: false
+    fs_writes: false
+    db_calls: false
+    net_calls: false
+    concurrency: false
+    yaml_io: false
+    json_io: false
