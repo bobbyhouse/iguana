@@ -8,3 +8,4 @@ baml_client
 .claude/commands/
 .logs/
 obsidian-vault/
+.tmp/

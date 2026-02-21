@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -36,6 +37,24 @@ Errors if the container already exists.
 		run: runInit,
 	},
 	{
+		name:  "list",
+		short: "List containers or projects",
+		usage: "iguana list [container]",
+		long: `Without arguments, lists all containers.
+With a container name, lists the projects in that container.
+`,
+		run: runList,
+	},
+	{
+		name:  "remove",
+		short: "Remove a container or project",
+		usage: "iguana remove <container> [project]",
+		long: `With one argument, removes the entire container.
+With two arguments, removes the named project from the container.
+`,
+		run: runRemove,
+	},
+	{
 		name:  "add",
 		short: "Add a project to a container",
 		usage: "iguana add <container> <project>",
@@ -58,6 +77,18 @@ For each project, runs configured plugins and writes evidence bundles to
 ~/.iguana/<container>/<project>/<plugin>/.
 `,
 		run: runAnalyze,
+	},
+	{
+		name:  "change-request",
+		short: "Create a change request from a container",
+		usage: "iguana change-request <container> <destination>",
+		long: `Prompt for a description and copy evidence to a destination directory.
+
+Opens a text editor for the change request description, then copies
+the container's evidence into <destination>/.tmp/change-request/.
+The description is written to index.md.
+`,
+		run: runChangeRequest,
 	},
 }
 
@@ -121,6 +152,63 @@ func runInit(args []string) error {
 	}
 	home, _ := os.UserHomeDir()
 	fmt.Printf("created container %q at %s\n", name, filepath.Join(home, ".iguana", name))
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// list
+// ---------------------------------------------------------------------------
+
+func runList(args []string) error {
+	if len(args) == 0 {
+		names, err := container.List()
+		if err != nil {
+			return err
+		}
+		for _, name := range names {
+			fmt.Println(name)
+		}
+		return nil
+	}
+
+	c, err := container.Open(args[0])
+	if err != nil {
+		return err
+	}
+	projects, err := c.ListProjects()
+	if err != nil {
+		return err
+	}
+	for _, p := range projects {
+		fmt.Println(p)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// remove
+// ---------------------------------------------------------------------------
+
+func runRemove(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: iguana remove <container> [project]")
+	}
+	if len(args) == 1 {
+		if err := container.Remove(args[0]); err != nil {
+			return err
+		}
+		fmt.Printf("removed container %q\n", args[0])
+		return nil
+	}
+
+	c, err := container.Open(args[0])
+	if err != nil {
+		return err
+	}
+	if err := c.RemoveProject(args[1]); err != nil {
+		return err
+	}
+	fmt.Printf("removed project %q from container %q\n", args[1], args[0])
 	return nil
 }
 
@@ -220,6 +308,34 @@ func runAnalyze(args []string) error {
 }
 
 // ---------------------------------------------------------------------------
+// change-request
+// ---------------------------------------------------------------------------
+
+func runChangeRequest(args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: iguana change-request <container> <destination>")
+	}
+	containerName := args[0]
+	dst := args[1]
+
+	c, err := container.Open(containerName)
+	if err != nil {
+		return err
+	}
+
+	description, err := promptTextArea()
+	if err != nil {
+		return err
+	}
+
+	if err := c.ChangeRequest(dst, description); err != nil {
+		return err
+	}
+	fmt.Printf("created change request for %q at %s\n", containerName, filepath.Join(dst, ".tmp", "change-request"))
+	return nil
+}
+
+// ---------------------------------------------------------------------------
 // TUI prompt helpers
 // ---------------------------------------------------------------------------
 
@@ -303,6 +419,65 @@ func promptQuestions(questions []plugin.ConfigQuestion) (map[string]string, erro
 		answers[q.Key] = final.inputs[i].Value()
 	}
 	return answers, nil
+}
+
+// ---------------------------------------------------------------------------
+// TUI textarea helper
+// ---------------------------------------------------------------------------
+
+// textAreaModel is a bubbletea model for multi-line text input.
+type textAreaModel struct {
+	ta   textarea.Model
+	done bool
+}
+
+func newTextAreaModel() textAreaModel {
+	ta := textarea.New()
+	ta.Placeholder = "Describe the change request..."
+	ta.Focus()
+	return textAreaModel{ta: ta}
+}
+
+func (m textAreaModel) Init() tea.Cmd {
+	return textarea.Blink
+}
+
+func (m textAreaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyCtrlC, tea.KeyEsc:
+			return m, tea.Quit
+		case tea.KeyCtrlD:
+			m.done = true
+			return m, tea.Quit
+		}
+	}
+	var cmd tea.Cmd
+	m.ta, cmd = m.ta.Update(msg)
+	return m, cmd
+}
+
+func (m textAreaModel) View() string {
+	if m.done {
+		return ""
+	}
+	return fmt.Sprintf("Change request description (Ctrl+D to submit, Esc to cancel):\n\n%s\n", m.ta.View())
+}
+
+// promptTextArea runs the textarea TUI and returns the entered text.
+func promptTextArea() (string, error) {
+	m := newTextAreaModel()
+	p := tea.NewProgram(m)
+	result, err := p.Run()
+	if err != nil {
+		return "", err
+	}
+	final, ok := result.(textAreaModel)
+	if !ok || !final.done {
+		return "", fmt.Errorf("change request cancelled")
+	}
+	return final.ta.Value(), nil
 }
 
 func main() {

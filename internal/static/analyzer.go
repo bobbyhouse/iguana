@@ -39,6 +39,7 @@ func (g *GoAnalyzer) Name() string { return "static" }
 func (g *GoAnalyzer) Configure() ([]plugin.ConfigQuestion, error) {
 	return []plugin.ConfigQuestion{
 		{Key: "repository", Prompt: "Git repository URL", Type: "text"},
+		{Key: "branch", Prompt: "Branch or tag (optional)", Type: "text"},
 	}, nil
 }
 
@@ -49,9 +50,10 @@ func (g *GoAnalyzer) Analyze(config map[string]string, outputDir string) error {
 	if repoURL == "" {
 		return fmt.Errorf("static: missing required config key 'repository'")
 	}
+	branch := config["branch"]
 
 	// Clone/update the repo into a temp directory.
-	tmpDir, err := cloneOrPull(repoURL)
+	tmpDir, err := cloneOrPull(repoURL, branch)
 	if err != nil {
 		return fmt.Errorf("static: fetch repo: %w", err)
 	}
@@ -110,9 +112,9 @@ func (g *GoAnalyzer) Analyze(config map[string]string, outputDir string) error {
 // Git helpers
 // ---------------------------------------------------------------------------
 
-func cloneOrPull(repoURL string) (string, error) {
-	// Derive a stable temp-dir name from the URL.
-	sum := sha256.Sum256([]byte(repoURL))
+func cloneOrPull(repoURL, branch string) (string, error) {
+	// Derive a stable temp-dir name from the URL and branch.
+	sum := sha256.Sum256([]byte(repoURL + "\x00" + branch))
 	name := "iguana-static-" + hex.EncodeToString(sum[:8])
 	tmpDir := filepath.Join(os.TempDir(), name)
 
@@ -126,7 +128,12 @@ func cloneOrPull(repoURL string) (string, error) {
 	}
 
 	// Fresh clone.
-	cmd := exec.Command("git", "clone", "--depth", "1", repoURL, tmpDir)
+	args := []string{"clone", "--depth", "1"}
+	if branch != "" {
+		args = append(args, "--branch", branch)
+	}
+	args = append(args, repoURL, tmpDir)
+	cmd := exec.Command("git", args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("git clone: %w\n%s", err, out)
 	}
@@ -348,14 +355,24 @@ func buildFrontmatter(absPath, relPath, repoURL, commitHash, hash string, pkg *p
 	}, nil
 }
 
-// buildRef constructs a git:// URL. line=0 means no line anchor.
+// buildRef constructs a GitHub-compatible HTTPS URL pointing to the raw
+// source file at a specific commit. line=0 means no line anchor.
+//
+// Both SCP-style (git@github.com:org/repo.git) and HTTPS-style
+// (https://github.com/org/repo.git) repository URLs are supported.
 func buildRef(repoURL, commitHash, relPath string, line int) string {
-	// Normalize: strip trailing .git if present.
-	base := strings.TrimSuffix(repoURL, ".git")
-	// Convert https:// to git:// host notation.
-	base = strings.TrimPrefix(base, "https://")
-	base = strings.TrimPrefix(base, "http://")
-	ref := fmt.Sprintf("git://%s@%s/%s", base, commitHash, relPath)
+	base := repoURL
+
+	// Convert SCP-style to HTTPS: git@github.com:org/repo → https://github.com/org/repo
+	if strings.HasPrefix(base, "git@") {
+		base = strings.TrimPrefix(base, "git@")
+		base = strings.Replace(base, ":", "/", 1)
+		base = "https://" + base
+	}
+
+	base = strings.TrimSuffix(base, ".git")
+
+	ref := fmt.Sprintf("%s/blob/%s/%s", base, commitHash, relPath)
 	if line > 0 {
 		ref += fmt.Sprintf("#L%d", line)
 	}

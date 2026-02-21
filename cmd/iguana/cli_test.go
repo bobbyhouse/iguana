@@ -169,6 +169,27 @@ func TestRunAnalyzeMissingContainerFails(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// change-request command
+// ---------------------------------------------------------------------------
+
+func TestRunChangeRequestMissingArgsFails(t *testing.T) {
+	if err := dispatch([]string{"change-request"}); err == nil {
+		t.Fatal("expected error for missing args")
+	}
+	if err := dispatch([]string{"change-request", "only-one"}); err == nil {
+		t.Fatal("expected error for missing destination arg")
+	}
+}
+
+func TestRunChangeRequestMissingContainerFails(t *testing.T) {
+	withTempHome(t)
+	dst := filepath.Join(t.TempDir(), "out")
+	if err := dispatch([]string{"change-request", "nocontainer", dst}); err == nil {
+		t.Fatal("expected error for missing container")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // plugin registry
 // ---------------------------------------------------------------------------
 

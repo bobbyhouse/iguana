@@ -21,7 +21,7 @@ fields are defined below.
 | Field | Type   | Description |
 |-------|--------|-------------|
 | `path`| string | Slash-separated path relative to the repository root |
-| `ref` | string | Canonical git source URL: `git://<host>/<org>/<repo>@<commit>/<path>` |
+| `ref` | string | HTTPS URL to the source file: `https://<host>/<org>/<repo>/blob/<commit>/<path>` |
 
 ## `package` object
 
@@ -39,7 +39,7 @@ fields are defined below.
 | `receiver` | string  | Receiver type (methods only; omitted for functions) |
 | `params`   | array   | Parameter type strings |
 | `returns`  | array   | Return type strings |
-| `ref`      | string  | Git source URL with line anchor: `...@<commit>/<path>#L<line>` |
+| `ref`      | string  | HTTPS URL with line anchor: `.../<path>#L<line>` |
 
 ## `types` array elements
 
@@ -67,12 +67,13 @@ All fields are boolean. Derived purely from static analysis (imports + AST).
 ## `ref` URL format
 
 ```
-git://<host>/<org>/<repo>@<commit>/<path/to/file.go>
-git://<host>/<org>/<repo>@<commit>/<path/to/file.go>#L<line>
+https://<host>/<org>/<repo>/blob/<commit>/<path/to/file.go>
+https://<host>/<org>/<repo>/blob/<commit>/<path/to/file.go>#L<line>
 ```
 
 The commit is the full 40-character SHA-1 returned by `git rev-parse HEAD` at
-analysis time. Line numbers in `ref` fields are 1-based.
+analysis time. Line numbers in `ref` fields are 1-based. These are clickable
+GitHub URLs that link directly to the source.
 
 ## Staleness detection
 
