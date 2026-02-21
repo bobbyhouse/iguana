@@ -1,225 +1,177 @@
-# iguana — Invariants
+# iguana v2 — Invariants
 
 These invariants must hold before and after every change to the implementation.
 
-## Integrity Invariants
+## Container Directory Invariants
 
-1. **SHA256 correctness**: The `file.sha256` field must always equal
-   `hex(sha256(os.ReadFile(file.path)))` at the moment of bundle creation.
+1. **Container root**: Every iguana container lives at `~/.iguana/<name>/`.
+   The name is an arbitrary identifier chosen at `iguana init` time.
 
-2. **Staleness detection**: `validateEvidenceBundle` must return an error
-   whenever the current file hash differs from `bundle.File.SHA256`.
+2. **Container uniqueness**: `iguana init <name>` errors immediately if
+   `~/.iguana/<name>/` already exists. It never overwrites an existing container.
 
-3. **Version constant**: `EvidenceBundle.Version` is always `2`.
+3. **Project config location**: Each project is represented by a single YAML
+   file at `~/.iguana/<container>/<project>.yaml`. No other files at that level
+   are treated as project configs.
 
-## Determinism Invariants
+4. **Evidence output location**: Plugin evidence bundles are written to
+   `~/.iguana/<container>/<project>/<plugin>/`. The plugin's `Analyze` method
+   receives this exact path as `outputDir`.
 
-4. **Idempotency**: Running `createEvidenceBundle(filePath)` twice on the
-   same unmodified file must produce byte-for-byte identical YAML output.
+## Project YAML Invariants
 
-5. **No position data**: The YAML output must never contain line numbers,
-   column numbers, or file offsets (e.g., no `line:`, `column:`, `offset:` keys).
+5. **Project YAML schema**: A project config file marshals/unmarshals as:
+   ```yaml
+   plugins:
+     <plugin-name>:
+       <key>: <value>
+   ```
+   The top-level key is always `plugins`. Each sub-key is a plugin name
+   mapping to a flat string→string config map.
 
-6. **No timestamps**: The output must not contain timestamps, UUIDs, or
-   environment-dependent values.
+6. **Project uniqueness**: `container.AddProject` errors if `<project>.yaml`
+   already exists. It never overwrites an existing project.
+
+7. **Project listing**: `container.ListProjects` returns project names derived
+   solely from `*.yaml` filenames in the container directory. Non-`.yaml` entries
+   and subdirectories are ignored.
+
+## Plugin Interface Invariants
+
+8. **Plugin.Name stability**: A plugin's `Name()` return value must never change.
+   It is used as a directory name and as the YAML key in project configs.
+
+9. **Configure purity**: `Configure()` returns questions only — it does not
+   prompt, write files, or perform I/O. It may return an error if the plugin
+   cannot determine its questions.
+
+10. **Analyze contract**: `Analyze(config, outputDir)` must:
+    - Create `outputDir` if it does not exist.
+    - Write evidence bundles as files under `outputDir`.
+    - Be idempotent: a second call with the same config and unchanged source
+      produces identical output (or skips up-to-date files).
+    - Return a non-nil error if any fatal condition prevents analysis.
+
+11. **Plugin registry**: The `plugins` map in `cmd/iguana/main.go` is the
+    single source of truth for available plugins. Plugin names in project YAMLs
+    that are not present in the registry produce a warning and are skipped
+    (not a fatal error).
+
+## Evidence Bundle Format Invariants
+
+12. **Bundle file format**: Every evidence bundle is a markdown file with YAML
+    frontmatter delimited by `---\n` on its own line. The frontmatter is valid
+    YAML. The body (after the closing `---`) may be empty.
+
+13. **Required frontmatter fields**: Every bundle produced by the static plugin
+    must include `plugin`, `schema`, `hash`, `file`, `package`, and `signals`.
+    The `functions` and `types` arrays may be absent (omitempty) when empty.
+
+14. **plugin field value**: The `plugin` field is always the plugin's `Name()`
+    return value (e.g. `"static"`).
+
+15. **schema field value**: The `schema` field is always the filename of the
+    schema document copied into `outputDir` by `Analyze` (e.g. `"schema.md"`).
+
+16. **Schema file copy**: `Analyze` copies `schema.md` to `outputDir/schema.md`
+    on every run, overwriting any existing copy.
+
+## Hash and Staleness Invariants
+
+17. **hash correctness**: The `hash` field contains the lowercase hex-encoded
+    SHA-256 digest of the source file bytes at the time of bundle creation.
+
+18. **Staleness check**: Before writing a bundle, `Analyze` reads the existing
+    bundle file (if any), extracts its `hash` field, and skips writing if the
+    hash matches the current source file hash. The on-disk file is not touched
+    when skipped.
+
+19. **No timestamps**: Bundle files must not contain timestamps, UUIDs, or
+    other environment-dependent values beyond `hash` and `ref`.
+
+## Git Source Fetching Invariants
+
+20. **Clone location**: The repository is cloned to a path derived from a hash
+    of the repository URL inside `os.TempDir()`. The clone is not removed after
+    analysis.
+
+21. **Shallow clone**: Fresh clones use `git clone --depth 1`. Subsequent
+    invocations with the same URL detect the existing `.git/` directory and run
+    `git pull --depth 1 --ff-only` instead.
+
+22. **Commit hash capture**: After clone/pull, `git rev-parse HEAD` is run in
+    the repo directory to obtain the full 40-character commit SHA. This value is
+    embedded in all `ref` URLs.
+
+## Ref URL Format Invariants
+
+23. **Ref URL format**: Source references use the scheme:
+    ```
+    git://<host>/<org>/<repo>@<commit>/<path/to/file.go>
+    git://<host>/<org>/<repo>@<commit>/<path/to/file.go>#L<line>
+    ```
+    where `<commit>` is the full 40-character SHA-1, `<path>` uses forward
+    slashes, and the line number (when present) is 1-based.
+
+24. **Trailing `.git` stripped**: Repository URLs ending in `.git` have that
+    suffix removed before constructing `ref` URLs.
+
+25. **Protocol normalised**: `https://` and `http://` prefixes are stripped from
+    the repository URL when building `git://` refs.
 
 ## Ordering Invariants
 
-7. **Imports sorted**: `package.imports` is sorted lexicographically by `path`.
+26. **Imports sorted**: `package.imports` is sorted lexicographically by `path`.
 
-8. **Functions sorted**: `symbols.functions` is sorted by `name`.
+27. **Functions sorted**: `functions` array is sorted by `name`.
 
-9. **Types sorted**: `symbols.types` is sorted by `name`.
+28. **Types sorted**: `types` array is sorted by `name`.
 
-10. **Variables sorted**: `symbols.variables` is sorted by `name`.
+29. **Struct fields in declaration order**: `fields` within a `typeDecl` are
+    listed in source declaration order, not alphabetically.
 
-11. **Constants sorted**: `symbols.constants` is sorted by `name`.
-
-12. **Calls sorted**: `calls` is sorted by `from`, then by `to` for equal `from`.
-
-## Path Invariants
-
-13. **Forward slashes**: `file.path` uses `/` separators (via `filepath.ToSlash`).
-
-14. **Output location**: The companion file is always written to
-    `<input-path>.evidence.yaml` in the same directory as the input.
-
-## Completeness Invariants
-
-15. **All top-level functions captured**: Every `ast.FuncDecl` in the file
-    appears exactly once in `symbols.functions`.
-
-16. **All top-level type declarations captured**: Every `token.TYPE` spec
-    appears in `symbols.types`.
-
-17. **All top-level vars/consts captured**: Every `token.VAR`/`token.CONST`
-    spec appears in `symbols.variables`/`symbols.constants`.
-
-## Signal Invariants
-
-18. **Signals are purely static**: Signals are derived only from imports, AST
-    nodes, and call targets — never from runtime state.
-
-19. **Signal monotonicity**: Adding more code to a file can only turn signals
-    from `false` to `true`, never from `true` to `false`.
-
-## Implementation Separation Invariants
-
-20. **Generation is pure**: `createEvidenceBundle` does not write any files.
-
-21. **Serialization is isolated**: `writeEvidenceBundle` only marshals and
-    writes — it does not re-analyze the source file.
-
-22. **Validation is read-only**: `validateEvidenceBundle` only reads the
-    source file to recompute the hash — it does not modify anything.
+30. **Deterministic walk order**: Source directories and files within each
+    directory are processed in sorted (lexicographic) order.
 
 ## Directory Walk Invariants
 
-23. **Relative paths in directory mode**: When `walkAndGenerate(root)` is used,
-    `file.path` is relative to the provided root, using forward slashes.
+31. **Skipped directories**: The following are always skipped during directory
+    walking: `vendor/`, `testdata/`, `examples/`, `docs/`, and any directory
+    whose name begins with `.`. Test files (`*_test.go`) are also skipped.
 
-24. **Skipped directories**: `vendor/`, `testdata/`, `examples/`, `docs/`, and
-    directories whose name starts with `.` are skipped entirely during directory
-    walking. Test files (`*_test.go`) are also skipped. Settings deny rules
-    (INV-39) may skip additional paths.
+32. **One package load per directory**: `loadPackageForDir` is called at most
+    once per unique directory during a single `Analyze` invocation.
 
-25. **Deterministic walk order**: Directories and files within each directory
-    are processed in sorted (lexicographic) order.
+33. **Relative paths in bundles**: `file.path` in the bundle frontmatter is
+    always the forward-slash path relative to the repository root — never an
+    absolute path.
 
-26. **One package load per directory**: `loadPackageForDir` is called once per
-    unique directory, not once per `.go` file.
+## Signal Invariants
 
-## System Model Invariants
+34. **Signals are purely static**: Signals are derived only from imports, AST
+    nodes, and call targets — never from runtime state or network access.
 
-27. **system_model.yaml is derived**: `system_model.yaml` is always generated
-    from evidence bundles via `GenerateSystemModel`; it must never be manually
-    edited. It is a derived artifact.
+35. **Signal monotonicity**: Adding more code to a file can only turn signals
+    from `false` to `true`, never from `true` to `false`.
 
-28. **System model arrays are sorted**: All arrays in the system model output
-    are sorted alphabetically by `id` or primary key (filename, package name,
-    or question text).
+## CLI Command Invariants
 
-29. **Inferred elements have evidence_refs**: Every inferred element
-    (`state_domains`, `trust_zones`) must have at least one entry in its
-    `evidence_refs` list, tracing back to the bundles that justified it.
+36. **Commands slice is the single source of truth**: All registered subcommands
+    are in the `commands` slice in `cmd/iguana/main.go`. Dispatch, help listing,
+    and `iguana help <cmd>` all derive from this slice.
 
-30. **Evidence ref format**: Evidence refs follow exactly:
-    `bundle:<path>[#symbol:<name>|#signal:<name>]`
-    — no other formats are valid.
+37. **Help flags**: `iguana`, `iguana --help`, and `iguana -h` all produce the
+    same overall usage listing and exit 0.
 
-31. **bundle_set_sha256 derivation**: `inputs.bundle_set_sha256` is a SHA256
-    hash derived from all loaded bundle paths and hashes, sorted and joined by
-    newline. It changes whenever any bundle is added, removed, or modified.
+38. **Unknown subcommand error**: When `os.Args[1]` is not a known command name,
+    the process exits non-zero with a message suggesting `iguana help`.
 
-## CLI Dispatch Invariants
+39. **Per-command usage on bad args**: When a subcommand receives wrong or
+    missing arguments, it returns a usage error. It does not panic.
 
-32. **Known subcommand dispatch**: When `os.Args[1]` exactly matches a registered
-    command name, the command's `run` function is called with the remaining args
-    (`os.Args[2:]`). No other handler is tried.
+40. **init idempotency guard**: `iguana init <name>` never silently overwrites
+    an existing container. It always errors on collision.
 
-33. **Help flags**: `iguana`, `iguana --help`, and `iguana -h` all produce the
-    same overall usage listing. `iguana help <cmd>` prints the long description
-    for that command.
-
-34. **Unknown subcommand error**: When `os.Args[1]` is not a known command name
-    AND does not exist as a file/directory on disk, the process exits with a
-    non-zero status and a message suggesting `iguana help`.
-
-35. **Backward compat — file/dir mode**: When `os.Args[1]` is not a known
-    subcommand name but names an existing file or directory, the existing
-    file/directory behavior is preserved (no behavior change).
-
-36. **Per-command usage on bad args**: When a subcommand receives wrong arguments,
-    it prints its own `usage` line and exits non-zero. It does not panic.
-
-37. **No-args is not an error path for help**: `iguana` with no args prints the
-    help listing to stdout and exits 0 (not an error).
-
-38. **Commands slice is the single source of truth**: All registered commands are
-    in the `commands` slice. The dispatch loop, help listing, and `help <cmd>`
-    all derive from the same slice — never hardcoded names.
-
-## Settings Invariants
-
-39. **Settings file location**: The settings file is always read from
-    `.iguana/settings.yaml` relative to the analysis root. Absence of the file
-    is not an error — `LoadSettings` returns nil in that case.
-
-40. **Settings deny list**: Files and directories matching any deny rule are
-    skipped during `walkAndGenerate`. Deny rules may be bare globs
-    (`baml_client/**`) or wrapped in `Read(...)` for compatibility with Claude
-    Code's permission syntax. A `prefix/**` pattern skips the prefix directory
-    itself and all paths beneath it.
-
-41. **Settings are read-only during analysis**: `LoadSettings` never modifies
-    any file. Settings only affect which files are walked, never the output
-    format or bundle schema.
-
-## Knowledge Bundle Invariants
-
-42. **Bundle directory structure**: `WriteKnowledgeBundle` always creates
-    subdirectories `domains/` and `graphs/` within `outputDir`, even when the
-    model has no state domains. Top-level pages `index.md`, `boundaries.md`,
-    `risk.md`, and `open-questions.md` are always written.
-
-43. **Wiki link format**: All cross-references between notes use
-    `[[path/to/note|display text]]` with no `.md` extension in the path
-    component. Note paths are relative to `outputDir`.
-
-44. **Vault idempotency**: Running `GenerateKnowledgeBundle` + `WriteKnowledgeBundle`
-    twice on the same model with the same `outputDir` produces byte-identical
-    files on both runs.
-
-45. **Filename sanitization**: Note filenames are derived from identifiers by
-    replacing `/` and `.` with `-`, collapsing consecutive `-` to one, and
-    trimming leading/trailing `-`.
-
-46. **Vault is derived**: The vault is generated from `system_model.yaml`; notes
-    are overwritten on each re-generation and must never be manually edited.
-
-53. **Domain note correspondence**: Each state domain produces exactly one
-    `domains/<id>.md`. No `symbols/` directory is created.
-
-54. **Tag requirements**: State domain notes carry tags `state-domain` and
-    `confidence-<level>` (high ≥0.8, medium ≥0.7, low <0.7). All tag arrays
-    are sorted alphabetically.
-
-55. **Evidence section**: `domains/<id>.md` includes a `## Evidence` section
-    listing each `EvidenceRef` from the state domain. The section is omitted
-    when `EvidenceRefs` is empty.
-
-## Evidence Enrichment Invariants
-
-47. **Constructors are functions returning package-local types**: `symbols.constructors`
-    lists every top-level function (not method) whose return types include at least
-    one type declared in the same file. Sorted lexicographically. Absent (omitempty)
-    when empty.
-
-48. **Struct fields captured**: For struct TypeDecls, `fields` contains one entry per
-    exported field in declaration order. Embedded exported types appear using their
-    base type name as the field name. Non-struct kinds have no `fields` entry
-    (omitempty). Unexported fields are never included.
-
-49. **Serialization format signals**: `signals.yaml_io` is true when the file imports
-    a path containing "yaml" (e.g. `gopkg.in/yaml.v3`) or calls a `yaml.*` target.
-    `signals.json_io` is true when the file imports `encoding/json` or calls a
-    `json.*` target. Both are purely static (INV-18).
-
-## Skip / Cache Invariants
-
-50. **Evidence bundle skip**: `WriteEvidenceBundle` and `writeBundleAt` compare the
-    SHA256 of the new bundle against `file.sha256` in any existing companion
-    `.evidence.yaml`. If the hashes match and `force` is false, writing is skipped
-    and `skipped=true` is returned. The on-disk file is not touched. `WalkAndGenerate`
-    propagates this into separate `written` and `skipped` return counts.
-
-51. **System model skip**: `runSystemModel` calls `SystemModelUpToDate(root, outputPath)`
-    before invoking the LLM. If the existing `system_model.yaml` has an
-    `inputs.bundle_set_sha256` that matches `computeBundleSetHash` of the current
-    evidence bundles, generation is skipped entirely and a "up to date" message is
-    printed. If `force` is true this check is bypassed and the model is always
-    regenerated.
-
-52. **Force flag**: Both `iguana analyze` and `iguana system-model` accept `--force`
-    (`-f`). When present, skip checks (INV-50, INV-51) are bypassed and outputs are
-    always regenerated. The flag may appear anywhere in the argument list.
+41. **analyze continues on errors**: `iguana analyze` reports per-plugin errors
+    to stderr but continues processing remaining projects and plugins. It returns
+    a non-zero exit only after all projects have been attempted.
