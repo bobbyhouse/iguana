@@ -152,6 +152,7 @@ func runInit(args []string) error {
 	}
 	home, _ := os.UserHomeDir()
 	fmt.Printf("created container %q at %s\n", name, filepath.Join(home, ".iguana", name))
+	fmt.Println("Welcome to iguana. I love you.")
 	return nil
 }
 
