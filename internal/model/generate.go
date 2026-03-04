@@ -1,6 +1,6 @@
 package model
 
-// system_model.go — System model generator (v1).
+// generate.go — System model generator (v1).
 //
 // Aggregates evidence bundles from a directory tree into a single YAML artifact
 // (system_model.yaml) that answers "what kind of system is this?"
@@ -30,174 +30,6 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
-
-// ---------------------------------------------------------------------------
-// Top-level output types
-// ---------------------------------------------------------------------------
-
-// SystemModel is the root output artifact written to system_model.yaml.
-// Field order matches desired YAML output order (INV-28: arrays sorted).
-type SystemModel struct {
-	Version            int                 `yaml:"version"`
-	GeneratedAt        string              `yaml:"generated_at"`
-	Inputs             ModelInputs         `yaml:"inputs"`
-	Inventory          Inventory           `yaml:"inventory"`
-	StateDomains       []StateDomain       `yaml:"state_domains,omitempty"`
-	Boundaries         Boundaries          `yaml:"boundaries"`
-	Effects            []Effect            `yaml:"effects,omitempty"`
-	Transitions        []Transition        `yaml:"transitions,omitempty"` // empty in v1
-	TrustZones         []TrustZone         `yaml:"trust_zones,omitempty"`
-	ConcurrencyDomains []ConcurrencyDomain `yaml:"concurrency_domains,omitempty"`
-	OpenQuestions      []OpenQuestion      `yaml:"open_questions,omitempty"`
-}
-
-// ModelInputs records provenance of the model (INV-31).
-type ModelInputs struct {
-	BundleSetSHA256 string `yaml:"bundle_set_sha256"`
-}
-
-// ---------------------------------------------------------------------------
-// Inventory
-// ---------------------------------------------------------------------------
-
-// Inventory groups all packages found in the analyzed root.
-type Inventory struct {
-	Packages    []PackageEntry `yaml:"packages,omitempty"`
-	Entrypoints []Entrypoint   `yaml:"entrypoints,omitempty"`
-}
-
-// PackageEntry represents one Go package in the inventory.
-type PackageEntry struct {
-	Name         string   `yaml:"name"`
-	Files        []string `yaml:"files,omitempty"`
-	Imports      []string `yaml:"imports,omitempty"` // internal package dependencies (by name)
-	EvidenceRefs []string `yaml:"evidence_refs,omitempty"`
-}
-
-// Entrypoint identifies a package+symbol that is a program entry point
-// (package main with a main function).
-type Entrypoint struct {
-	Package      string   `yaml:"package"`
-	Symbol       string   `yaml:"symbol"`
-	EvidenceRefs []string `yaml:"evidence_refs,omitempty"`
-}
-
-// ---------------------------------------------------------------------------
-// State domains (inferred)
-// ---------------------------------------------------------------------------
-
-// StateDomain is a logical cluster of related state (inferred by LLM).
-type StateDomain struct {
-	ID              string       `yaml:"id"`
-	Description     string       `yaml:"description"`
-	Owners          []string     `yaml:"owners,omitempty"`
-	Aggregate       string       `yaml:"aggregate"`                   // primary concept name
-	Representations []string     `yaml:"representations,omitempty"`   // 1-3 related type names
-	PrimaryMutators []string     `yaml:"primary_mutators,omitempty"`  // deduped write functions
-	PrimaryReaders  []string     `yaml:"primary_readers,omitempty"`   // deduped read functions
-	Persistence     *Persistence `yaml:"persistence,omitempty"`
-	EvidenceRefs    []string     `yaml:"evidence_refs,omitempty"`
-	Confidence      float64      `yaml:"confidence"`
-}
-
-// Persistence describes how a state domain is persisted (derived from signals).
-type Persistence struct {
-	Kind         string   `yaml:"kind"` // "db" | "fs" | "memory"
-	EvidenceRefs []string `yaml:"evidence_refs,omitempty"`
-}
-
-// ---------------------------------------------------------------------------
-// Boundaries
-// ---------------------------------------------------------------------------
-
-// Boundaries groups process, persistence, and network boundary information.
-type Boundaries struct {
-	Process     []ProcessBoundary     `yaml:"process,omitempty"`
-	Persistence []PersistenceBoundary `yaml:"persistence,omitempty"`
-	Network     *NetworkBoundary      `yaml:"network,omitempty"`
-}
-
-// ProcessBoundary describes a subprocess or command boundary.
-type ProcessBoundary struct {
-	Kind         string   `yaml:"kind"`
-	EvidenceRefs []string `yaml:"evidence_refs,omitempty"`
-}
-
-// PersistenceBoundary describes a storage system used by the codebase.
-type PersistenceBoundary struct {
-	Kind         string      `yaml:"kind"` // "db" | "fs"
-	Writers      []SymbolRef `yaml:"writers,omitempty"`
-	EvidenceRefs []string    `yaml:"evidence_refs,omitempty"`
-}
-
-// NetworkBoundary describes outbound network usage.
-type NetworkBoundary struct {
-	Outbound     []SymbolRef `yaml:"outbound,omitempty"`
-	EvidenceRefs []string    `yaml:"evidence_refs,omitempty"`
-}
-
-// SymbolRef points to a source file (with optional symbol fragment).
-type SymbolRef struct {
-	File         string   `yaml:"file"`
-	EvidenceRefs []string `yaml:"evidence_refs,omitempty"`
-}
-
-// ---------------------------------------------------------------------------
-// Effects
-// ---------------------------------------------------------------------------
-
-// Effect represents a side-effect kind observed at a symbol site.
-type Effect struct {
-	Kind         string   `yaml:"kind"`             // "db_write" | "fs_read" | "fs_write" | "net_call"
-	Domain       string   `yaml:"domain,omitempty"` // state domain this effect belongs to (linked post-LLM)
-	Via          string   `yaml:"via"`              // file path where the effect originates
-	EvidenceRefs []string `yaml:"evidence_refs,omitempty"`
-}
-
-// ---------------------------------------------------------------------------
-// Transitions (empty in v1)
-// ---------------------------------------------------------------------------
-
-// Transition is reserved for v2 (call-graph-based state transitions).
-type Transition struct {
-	From         string   `yaml:"from"`
-	To           string   `yaml:"to"`
-	EvidenceRefs []string `yaml:"evidence_refs,omitempty"`
-}
-
-// ---------------------------------------------------------------------------
-// Trust zones (inferred)
-// ---------------------------------------------------------------------------
-
-// TrustZone is a group of packages at the same security boundary.
-type TrustZone struct {
-	ID           string   `yaml:"id"`
-	Packages     []string `yaml:"packages,omitempty"`
-	ExternalVia  []string `yaml:"external_via,omitempty"`
-	EvidenceRefs []string `yaml:"evidence_refs,omitempty"`
-}
-
-// ---------------------------------------------------------------------------
-// Concurrency domains
-// ---------------------------------------------------------------------------
-
-// ConcurrencyDomain identifies a file with concurrent code.
-type ConcurrencyDomain struct {
-	ID           string   `yaml:"id"`
-	Files        []string `yaml:"files,omitempty"`
-	EvidenceRefs []string `yaml:"evidence_refs,omitempty"`
-}
-
-// ---------------------------------------------------------------------------
-// Open questions (inferred)
-// ---------------------------------------------------------------------------
-
-// OpenQuestion captures something static analysis could not determine.
-type OpenQuestion struct {
-	Question        string   `yaml:"question"`
-	RelatedDomain   string   `yaml:"related_domain,omitempty"`
-	MissingEvidence []string `yaml:"missing_evidence,omitempty"`
-}
 
 // ---------------------------------------------------------------------------
 // Evidence ref helper (INV-30)
@@ -541,9 +373,6 @@ func buildConcurrencyDomains(bundles []*evidence.EvidenceBundle) []ConcurrencyDo
 // Package summaries for LLM
 // ---------------------------------------------------------------------------
 
-// buildPackageSummaries groups bundles by package, ORs signals, collects
-// types/funcs/imports (capped at 10), and filters to packages with ≥1 signal.
-// At most 60 packages are sent to the LLM.
 // readModuleName reads the module name from go.mod in root.
 // Returns "" if go.mod is absent or unparseable.
 func readModuleName(root string) string {
@@ -559,9 +388,8 @@ func readModuleName(root string) string {
 	return ""
 }
 
-// formatTypeDesc returns a compact description of a type or function for the LLM.
-// Structs: "TypeName{Field1:Type1, Field2:Type2}"
-// Functions: "FuncName(Type1, Type2) ReturnType" or "(Type1, Type2)" for multi-return
+// formatStructDesc returns a compact description of a struct type for the LLM:
+// "TypeName{Field1:Type1, Field2:Type2}"
 func formatStructDesc(td evidence.TypeDecl) string {
 	if td.Kind != "struct" || len(td.Fields) == 0 {
 		return ""
@@ -581,6 +409,8 @@ func formatStructDesc(td evidence.TypeDecl) string {
 	return sb.String()
 }
 
+// formatFuncDesc returns a compact description of a function for the LLM:
+// "FuncName(Type1, Type2) ReturnType" or "(Type1, Type2)" for multi-return.
 func formatFuncDesc(fn evidence.Function) string {
 	if !fn.Exported || fn.Receiver != "" {
 		return "" // skip unexported and methods; focus on top-level functions
@@ -611,6 +441,9 @@ func formatFuncDesc(fn evidence.Function) string {
 	return sb.String()
 }
 
+// buildPackageSummaries groups bundles by package, ORs signals, collects
+// types/funcs/imports (capped at 10), and filters to packages with ≥1 signal.
+// At most 60 packages are sent to the LLM.
 func buildPackageSummaries(bundles []*evidence.EvidenceBundle, s *settings.Settings, moduleName string) []types.PackageSummary {
 	type pkgAccum struct {
 		files     []string
@@ -921,47 +754,4 @@ func GenerateSystemModel(ctx context.Context, root string) (*SystemModel, error)
 		TrustZones:         trustZones,
 		OpenQuestions:      openQuestions,
 	}, nil
-}
-
-// ReadSystemModel reads and unmarshals a system_model.yaml file.
-func ReadSystemModel(path string) (*SystemModel, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
-	}
-	var model SystemModel
-	if err := yaml.Unmarshal(data, &model); err != nil {
-		return nil, fmt.Errorf("unmarshal %s: %w", path, err)
-	}
-	return &model, nil
-}
-
-// SystemModelUpToDate returns true if the system model at outputPath was
-// generated from the same set of evidence bundles currently in root (INV-51).
-// Returns false (without error) if the file does not exist or cannot be read.
-func SystemModelUpToDate(root, outputPath string) (bool, error) {
-	bundles, err := loadEvidenceBundles(root)
-	if err != nil {
-		return false, fmt.Errorf("load bundles: %w", err)
-	}
-	if len(bundles) == 0 {
-		return false, nil
-	}
-	existing, err := ReadSystemModel(outputPath)
-	if err != nil {
-		return false, nil // doesn't exist or unreadable — not up to date
-	}
-	return existing.Inputs.BundleSetSHA256 == computeBundleSetHash(bundles), nil
-}
-
-// WriteSystemModel marshals model to YAML and writes it to outputPath.
-func WriteSystemModel(model *SystemModel, outputPath string) error {
-	data, err := yaml.Marshal(model)
-	if err != nil {
-		return fmt.Errorf("marshal: %w", err)
-	}
-	if err := os.WriteFile(outputPath, data, 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", outputPath, err)
-	}
-	return nil
 }
