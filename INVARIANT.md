@@ -223,3 +223,18 @@ These invariants must hold before and after every change to the implementation.
 52. **Force flag**: Both `iguana analyze` and `iguana system-model` accept `--force`
     (`-f`). When present, skip checks (INV-50, INV-51) are bypassed and outputs are
     always regenerated. The flag may appear anywhere in the argument list.
+
+## CategorizeFile Invariants (ig-r74m)
+
+53. **Classifier injection**: `categorizeFile` delegates classification to the
+    `typeOfState` package-level variable. Tests MUST replace this variable with a
+    deterministic mock; they MUST NOT call the real LLM.
+
+54. **File read errors propagate**: `categorizeFile` returns an error (and zero
+    State) when the file does not exist or cannot be read.
+
+55. **Valid state output**: When the classifier succeeds, `categorizeFile` returns
+    a value satisfying `state.IsValid() == true`.
+
+56. **TestCategorizeFile determinism**: All subtests in `TestCategorizeFile` are
+    deterministic. No subtest may call the real `TypeOfState` LLM function.
